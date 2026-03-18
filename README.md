@@ -79,7 +79,11 @@ Five built-in color themes, applied instantly and saved between sessions:
 
 ## 🖼️ Screenshots
 
-*Coming soon*
+<img width="1268" height="825" alt="Screenshot 2026-03-18 200012" src="https://github.com/user-attachments/assets/44303730-1d46-44bb-b82d-f90675b24f72" />
+<img width="1272" height="830" alt="Screenshot 2026-03-18 200025" src="https://github.com/user-attachments/assets/8def6f48-b083-43a0-ab09-45b0d2ef2d5b" />
+<img width="1373" height="828" alt="Screenshot 2026-03-18 200039" src="https://github.com/user-attachments/assets/d85703fc-5bd1-4da4-a4fb-32d4521dde71" />
+<img width="1277" height="836" alt="Screenshot 2026-03-18 195950" src="https://github.com/user-attachments/assets/ddd56a03-07d8-49ea-b034-66dabd5f0408" />
+
 
 ---
 
