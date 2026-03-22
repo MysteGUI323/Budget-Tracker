@@ -30,9 +30,10 @@ Head to the [Releases](../../releases) page and download the latest version for 
 
 ### 💰 Budget Management
 - Set a **Weekly**, **Monthly**, or **Yearly** budget
-- **Prorated tracking** — compares your spending against where you *should* be at this point in the period, not just the total
+- **Period-filtered tracking** — only expenses logged within the current budget period count toward your budget, so past periods never affect your current numbers
+- **Prorated tracking** — compares your total spending against where you *should* be at this point in the period, not just the total
 - Live progress bar with color-coded warnings (green → yellow → red)
-- Three stat cards: Total Spent, Prorated Budget, Remaining Today
+- Four stat cards: This Period Spent, Prorated Budget, Remaining Today, Spend Today
 
 ### 🎯 Savings Tracker
 - Set a savings goal and log deposits toward it
@@ -76,8 +77,8 @@ Five built-in color themes, applied instantly and saved between sessions:
 - Password-protected Admin Tools panel (for resetting progress during testing)
 
 ### 💾 Persistence & Backup
-- All data saves automatically
-- Desktop: auto-saves on close with a manual save button and automatic `.bak` backup file
+- All data saves automatically on close
+- Desktop: auto-saves when the app is closed, with an automatic `.bak` backup file created on every save
 - Android: saves instantly to device storage on every change
 
 ### 🔔 Daily Reminder *(Android only)*
@@ -185,6 +186,20 @@ StudentBudgetTracker/
 - Data is stored locally on your device — uninstalling the app will erase your data
 - The APK is not from the Google Play Store so you'll need to allow unknown sources to install it
 - For the daily reminder to persist after a phone restart, the app needs to have been opened at least once after boot
+
+---
+
+## 🔄 Changelog
+
+### v0.2
+- Added **Spend Today** stat card — shows how much you can safely spend today based on remaining budget divided by days left in the period
+- Renamed **Total Spent** stat card to **This Period Spent** to accurately reflect period-filtered tracking
+- Budget calculations now only count expenses from the current budget period — expenses from previous periods no longer affect your current budget numbers
+- Removed manual Save Now button — data saves automatically when the app is closed
+- Code optimization pass across all source files: dead code removed, section labels added, logic bug fixes in theme system
+
+### v0.1
+- Initial release
 
 ---
 
