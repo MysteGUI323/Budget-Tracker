@@ -2,16 +2,30 @@ import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
 
+/**
+ * UITheme — centralized styling and component factory for the Budget Tracker.
+ *
+ * Responsibilities:
+ *   - Defines the Theme enum (Dark / Light / Midnight Blue / Forest Green / Warm Sunset)
+ *   - Holds live color fields (BG, CARD, ACCENT, etc.) updated on theme change
+ *   - applyTheme()        — sets color fields + syncs UIManager
+ *   - applyThemeToWindow()— walks the component tree and repaints all colors live
+ *   - Component factories — label(), textField(), styleCombo(), accentButton(), etc.
+ *   - Live borders        — accentBorder() / borderBorder() read theme colors at paint time
+ *
+ * All color-bearing components created via the factory methods will respond
+ * correctly to theme switches when applyThemeToWindow() is called.
+ */
 public class UITheme {
 
-    // ── Theme Definitions ──────────────────────────────────────────────────────
+    // ── Theme enum ─────────────────────────────────────────────────────────────
 
     public enum Theme {
-        DARK("Dark"),
-        LIGHT("Light"),
+        DARK         ("Dark"),
+        LIGHT        ("Light"),
         MIDNIGHT_BLUE("Midnight Blue"),
-        FOREST_GREEN("Forest Green"),
-        WARM_SUNSET("Warm Sunset");
+        FOREST_GREEN ("Forest Green"),
+        WARM_SUNSET  ("Warm Sunset");
 
         public final String displayName;
         Theme(String displayName) { this.displayName = displayName; }
@@ -25,9 +39,9 @@ public class UITheme {
     }
 
     private static Theme currentTheme = Theme.DARK;
-    public static Theme getCurrentTheme() { return currentTheme; }
+    public  static Theme getCurrentTheme() { return currentTheme; }
 
-    // ── Live Color Fields ──────────────────────────────────────────────────────
+    // ── Live color fields ──────────────────────────────────────────────────────
 
     public static Color BG;
     public static Color HEADER_BG;
@@ -41,9 +55,9 @@ public class UITheme {
     public static Color TEXT_SECONDARY;
     public static Color BORDER;
 
-    static { applyTheme(Theme.DARK); }
+    static { applyTheme(Theme.DARK); } // initialize with default theme
 
-    // ── Theme Color Tables ─────────────────────────────────────────────────────
+    // ── Theme color tables ─────────────────────────────────────────────────────
 
     public static void applyTheme(Theme theme) {
         currentTheme = theme;
@@ -53,71 +67,73 @@ public class UITheme {
                 HEADER_BG      = new Color(225, 225, 236);
                 CARD           = new Color(250, 250, 254);
                 INPUT          = new Color(228, 228, 238);
-                ACCENT         = new Color(90, 130, 190);
-                SUCCESS        = new Color(75, 158, 105);
-                DANGER         = new Color(188, 75, 75);
-                WARNING        = new Color(180, 130, 40);
-                TEXT_PRIMARY   = new Color(40, 40, 55);
+                ACCENT         = new Color( 90, 130, 190);
+                SUCCESS        = new Color( 75, 158, 105);
+                DANGER         = new Color(188,  75,  75);
+                WARNING        = new Color(180, 130,  40);
+                TEXT_PRIMARY   = new Color( 40,  40,  55);
                 TEXT_SECONDARY = new Color(110, 110, 130);
                 BORDER         = new Color(208, 208, 220);
                 break;
             case MIDNIGHT_BLUE:
-                BG             = new Color(18, 22, 48);
-                HEADER_BG      = new Color(12, 15, 35);
-                CARD           = new Color(25, 32, 65);
-                INPUT          = new Color(32, 42, 82);
+                BG             = new Color( 18,  22,  48);
+                HEADER_BG      = new Color( 12,  15,  35);
+                CARD           = new Color( 25,  32,  65);
+                INPUT          = new Color( 32,  42,  82);
                 ACCENT         = new Color(110, 155, 210);
-                SUCCESS        = new Color(80, 175, 140);
+                SUCCESS        = new Color( 80, 175, 140);
                 DANGER         = new Color(195, 100, 100);
-                WARNING        = new Color(200, 165, 75);
+                WARNING        = new Color(200, 165,  75);
                 TEXT_PRIMARY   = new Color(200, 210, 235);
                 TEXT_SECONDARY = new Color(120, 135, 170);
-                BORDER         = new Color(45, 58, 105);
+                BORDER         = new Color( 45,  58, 105);
                 break;
             case FOREST_GREEN:
-                BG             = new Color(22, 32, 24);
-                HEADER_BG      = new Color(15, 22, 17);
-                CARD           = new Color(30, 44, 33);
-                INPUT          = new Color(38, 58, 42);
-                ACCENT         = new Color(95, 175, 120);
+                BG             = new Color( 22,  32,  24);
+                HEADER_BG      = new Color( 15,  22,  17);
+                CARD           = new Color( 30,  44,  33);
+                INPUT          = new Color( 38,  58,  42);
+                ACCENT         = new Color( 95, 175, 120);
                 SUCCESS        = new Color(120, 190, 145);
-                DANGER         = new Color(190, 95, 90);
-                WARNING        = new Color(190, 165, 75);
+                DANGER         = new Color(190,  95,  90);
+                WARNING        = new Color(190, 165,  75);
                 TEXT_PRIMARY   = new Color(200, 225, 205);
                 TEXT_SECONDARY = new Color(120, 158, 128);
-                BORDER         = new Color(50, 80, 56);
+                BORDER         = new Color( 50,  80,  56);
                 break;
             case WARM_SUNSET:
-                BG             = new Color(32, 22, 18);
-                HEADER_BG      = new Color(22, 14, 10);
-                CARD           = new Color(46, 30, 22);
-                INPUT          = new Color(60, 38, 28);
-                ACCENT         = new Color(205, 128, 80);
+                BG             = new Color( 32,  22,  18);
+                HEADER_BG      = new Color( 22,  14,  10);
+                CARD           = new Color( 46,  30,  22);
+                INPUT          = new Color( 60,  38,  28);
+                ACCENT         = new Color(205, 128,  80);
                 SUCCESS        = new Color(100, 175, 125);
-                DANGER         = new Color(195, 100, 95);
-                WARNING        = new Color(200, 170, 80);
+                DANGER         = new Color(195, 100,  95);
+                WARNING        = new Color(200, 170,  80);
                 TEXT_PRIMARY   = new Color(238, 220, 205);
                 TEXT_SECONDARY = new Color(165, 128, 105);
-                BORDER         = new Color(88, 55, 38);
+                BORDER         = new Color( 88,  55,  38);
                 break;
             default: // DARK
-                BG             = new Color(22, 22, 30);
-                HEADER_BG      = new Color(16, 16, 22);
-                CARD           = new Color(32, 32, 44);
-                INPUT          = new Color(44, 44, 60);
+                BG             = new Color( 22,  22,  30);
+                HEADER_BG      = new Color( 16,  16,  22);
+                CARD           = new Color( 32,  32,  44);
+                INPUT          = new Color( 44,  44,  60);
                 ACCENT         = new Color(110, 168, 210);
-                SUCCESS        = new Color(85, 180, 140);
-                DANGER         = new Color(200, 95, 95);
-                WARNING        = new Color(205, 165, 75);
+                SUCCESS        = new Color( 85, 180, 140);
+                DANGER         = new Color(200,  95,  95);
+                WARNING        = new Color(205, 165,  75);
                 TEXT_PRIMARY   = new Color(215, 215, 228);
                 TEXT_SECONDARY = new Color(130, 130, 152);
-                BORDER         = new Color(58, 58, 78);
+                BORDER         = new Color( 58,  58,  78);
                 break;
         }
         refreshUIManager();
     }
 
-    // Walks every component in the window and updates backgrounds/foregrounds
+    // ── Live window repaint ────────────────────────────────────────────────────
+
+    /** Walks every component in the window and remaps colors to the active theme. */
     public static void applyThemeToWindow(Window window) {
         refreshUIManager();
         repaintTree(window);
@@ -126,33 +142,39 @@ public class UITheme {
     }
 
     private static void repaintTree(Component c) {
-        // Remap known background colors across all themes
+        // Remap background colors for layout containers
         if (c instanceof JPanel || c instanceof JScrollPane
                 || c instanceof JSplitPane || c instanceof JTabbedPane) {
             Color bg = c.getBackground();
-            if (matchesAny(bg, ALL_HEADER_BG)) c.setBackground(HEADER_BG);
-            else if (matchesAny(bg, ALL_BG))   c.setBackground(BG);
-            else if (matchesAny(bg, ALL_CARD))  c.setBackground(CARD);
-            else if (matchesAny(bg, ALL_INPUT)) c.setBackground(INPUT);
+            if      (matchesAny(bg, ALL_HEADER_BG)) c.setBackground(HEADER_BG);
+            else if (matchesAny(bg, ALL_BG))        c.setBackground(BG);
+            else if (matchesAny(bg, ALL_CARD))       c.setBackground(CARD);
+            else if (matchesAny(bg, ALL_INPUT))      c.setBackground(INPUT);
 
-            if (c instanceof JScrollPane) {
+            if (c instanceof JScrollPane)
                 ((JScrollPane) c).getViewport().setBackground(BG);
-            }
         }
 
-        if (c instanceof JTextField || c instanceof JPasswordField) {
+        // Remap text input colors.
+        // JPasswordField is checked first — it extends JTextField, so if JTextField
+        // were checked first the JPasswordField branch would never be reached.
+        if (c instanceof JPasswordField) {
             c.setBackground(INPUT);
             c.setForeground(TEXT_PRIMARY);
-            ((javax.swing.text.JTextComponent) c).setCaretColor(TEXT_PRIMARY);
+            ((JPasswordField) c).setCaretColor(TEXT_PRIMARY);
+        } else if (c instanceof JTextField) {
+            c.setBackground(INPUT);
+            c.setForeground(TEXT_PRIMARY);
+            ((JTextField) c).setCaretColor(TEXT_PRIMARY);
         }
 
+        // Remap button colors by stored role
         if (c instanceof JButton) {
             Object role = ((JButton) c).getClientProperty("colorRole");
-            if (role instanceof String) {
-                c.setBackground(roleColor((String) role));
-            }
+            if (role instanceof String) c.setBackground(roleColor((String) role));
         }
 
+        // Remap label foreground colors (skip table cell renderers)
         if (c instanceof JLabel && !(c instanceof javax.swing.table.DefaultTableCellRenderer)) {
             Color fg = c.getForeground();
             if      (matchesAny(fg, ALL_TEXT_PRIMARY))   c.setForeground(TEXT_PRIMARY);
@@ -163,15 +185,15 @@ public class UITheme {
             else if (matchesAny(fg, ALL_WARNING))        c.setForeground(WARNING);
         }
 
+        // Remap list colors
         if (c instanceof JList) {
             c.setBackground(CARD);
             c.setForeground(TEXT_PRIMARY);
         }
 
-        if (c instanceof Container) {
-            for (Component child : ((Container) c).getComponents())
-                repaintTree(child);
-        }
+        // Recurse into children
+        if (c instanceof Container)
+            for (Component child : ((Container) c).getComponents()) repaintTree(child);
     }
 
     // ── Color match tables — all known values across all 5 themes ─────────────
@@ -193,7 +215,7 @@ public class UITheme {
             new Color(38,58,42), new Color(60,38,28)
     };
     private static final Color[] ALL_TEXT_PRIMARY = {
-            new Color(215,215,228), new Color(40,40,55), new Color(200,210,235),
+            new Color(215,215,228), new Color(40,40,55),  new Color(200,210,235),
             new Color(200,225,205), new Color(238,220,205)
     };
     private static final Color[] ALL_TEXT_SECONDARY = {
@@ -201,7 +223,7 @@ public class UITheme {
             new Color(120,158,128), new Color(165,128,105)
     };
     private static final Color[] ALL_ACCENT = {
-            new Color(110,168,210), new Color(90,130,190), new Color(110,155,210),
+            new Color(110,168,210), new Color(90,130,190),  new Color(110,155,210),
             new Color(95,175,120),  new Color(205,128,80)
     };
     private static final Color[] ALL_SUCCESS = {
@@ -217,26 +239,31 @@ public class UITheme {
             new Color(190,165,75), new Color(200,170,80)
     };
 
+    /**
+     * Fuzzy color match — allows a tolerance of 15 across R+G+B combined.
+     * Needed because theme switching may introduce minor rounding differences.
+     */
     private static boolean matchesAny(Color c, Color[] list) {
         if (c == null) return false;
         for (Color ref : list)
-            if (Math.abs(c.getRed()-ref.getRed()) + Math.abs(c.getGreen()-ref.getGreen())
-                    + Math.abs(c.getBlue()-ref.getBlue()) < 15) return true;
+            if (Math.abs(c.getRed()  - ref.getRed())
+                    + Math.abs(c.getGreen()- ref.getGreen())
+                    + Math.abs(c.getBlue() - ref.getBlue()) < 15) return true;
         return false;
     }
 
     // ── Fonts ──────────────────────────────────────────────────────────────────
 
-    public static final Font HEADER_FONT        = new Font("Segoe UI Emoji", Font.BOLD, 15);
+    public static final Font HEADER_FONT        = new Font("Segoe UI Emoji", Font.BOLD,  15);
     public static final Font BODY_FONT          = new Font("Segoe UI Emoji", Font.PLAIN, 13);
     public static final Font SMALL_FONT         = new Font("Segoe UI Emoji", Font.PLAIN, 11);
-    public static final Font SYMBOL_HEADER_FONT = new Font("Arial", Font.BOLD, 15);
-    public static final Font SYMBOL_BODY_FONT   = new Font("Arial", Font.PLAIN, 13);
-    public static final Font SYMBOL_SMALL_FONT  = new Font("Arial", Font.PLAIN, 11);
-    public static final Font PESO_FONT          = new Font("Arial", Font.PLAIN, 13);
-    public static final Font PESO_FONT_BOLD     = new Font("Arial", Font.BOLD, 15);
+    public static final Font SYMBOL_HEADER_FONT = new Font("Arial",          Font.BOLD,  15);
+    public static final Font SYMBOL_BODY_FONT   = new Font("Arial",          Font.PLAIN, 13);
+    public static final Font SYMBOL_SMALL_FONT  = new Font("Arial",          Font.PLAIN, 11);
+    public static final Font PESO_FONT          = new Font("Arial",          Font.PLAIN, 13);
+    public static final Font PESO_FONT_BOLD     = new Font("Arial",          Font.BOLD,  15);
 
-    // ── Component Factories ────────────────────────────────────────────────────
+    // ── Component factories ────────────────────────────────────────────────────
 
     public static JLabel label(String text) {
         JLabel lbl = new JLabel(text);
@@ -245,6 +272,7 @@ public class UITheme {
         return lbl;
     }
 
+    /** Label using Arial (for peso signs and symbols that need font fallback). */
     public static JLabel SymbolLabel(String text) {
         JLabel lbl = new JLabel(text);
         lbl.setFont(SYMBOL_BODY_FONT);
@@ -266,7 +294,7 @@ public class UITheme {
         return field;
     }
 
-    // Fixed display colors for the closed combo box face — consistent across all themes
+    // Fixed combo face colors — consistent across all themes to avoid L&F overrides
     public static final Color COMBO_DISPLAY_BG = new Color(55, 55, 75);
     public static final Color COMBO_DISPLAY_FG = new Color(18, 18, 24);
 
@@ -281,38 +309,37 @@ public class UITheme {
             public Component getListCellRendererComponent(JList<?> list, Object value,
                                                           int index, boolean isSelected, boolean cellHasFocus) {
                 JLabel lbl = (JLabel) super.getListCellRendererComponent(
-                        list, value, index, isSelected, cellHasFocus);
+                        list, value, index, isSelected, cellHasFocus
+                );
                 lbl.setFont(BODY_FONT);
 
                 if (index == -1) {
-                    // This is the selected item display (closed face of the combo)
-                    // System L&F tries to paint this its own way — we override hard
+                    // Closed face of the combo — override system L&F hard
                     lbl.setBackground(COMBO_DISPLAY_BG);
                     lbl.setForeground(COMBO_DISPLAY_FG);
-                    lbl.setBorder(new EmptyBorder(4, 10, 4, 10));
                 } else if (isSelected) {
                     lbl.setBackground(ACCENT);
                     lbl.setForeground(currentTheme == Theme.LIGHT ? Color.WHITE : Color.BLACK);
-                    lbl.setBorder(new EmptyBorder(4, 10, 4, 10));
                 } else {
                     lbl.setBackground(INPUT);
                     lbl.setForeground(TEXT_PRIMARY);
-                    lbl.setBorder(new EmptyBorder(4, 10, 4, 10));
                 }
+                lbl.setBorder(new EmptyBorder(4, 10, 4, 10));
                 lbl.setOpaque(true);
                 return lbl;
             }
         });
 
         combo.setOpaque(true);
-        if (combo.getEditor() != null && combo.getEditor().getEditorComponent() instanceof JTextField) {
+        if (combo.getEditor() != null
+                && combo.getEditor().getEditorComponent() instanceof JTextField) {
             JTextField editor = (JTextField) combo.getEditor().getEditorComponent();
             editor.setBackground(COMBO_DISPLAY_BG);
             editor.setForeground(COMBO_DISPLAY_FG);
         }
     }
 
-    // ── Buttons ────────────────────────────────────────────────────────────────
+    // ── Button factories ───────────────────────────────────────────────────────
 
     public static JButton accentButton(String text)       { return buildButton(text, "ACCENT");  }
     public static JButton successButton(String text)      { return buildButton(text, "SUCCESS"); }
@@ -335,9 +362,9 @@ public class UITheme {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 Color c = getBackground();
-                if (getModel().isPressed())       g2.setColor(c.darker());
-                else if (getModel().isRollover()) g2.setColor(c.brighter());
-                else                              g2.setColor(c);
+                if      (getModel().isPressed())   g2.setColor(c.darker());
+                else if (getModel().isRollover())  g2.setColor(c.brighter());
+                else                               g2.setColor(c);
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
                 g2.dispose();
                 super.paintComponent(g);
@@ -400,45 +427,28 @@ public class UITheme {
         JOptionPane.showMessageDialog(parent, message, "Oops", JOptionPane.ERROR_MESSAGE);
     }
 
-    // ── Live borders — read theme colors at paint time, never go stale ─────────
+    // ── Live borders ───────────────────────────────────────────────────────────
+    // These read theme color fields at paint time so they never go stale
+    // when the theme changes, even without being recreated.
 
-    public static Border accentBorder() {
-        return new javax.swing.border.AbstractBorder() {
+    /** Shared factory — builds a rounded 1px border using the supplied color supplier. */
+    private static Border buildLiveBorder(java.util.function.Supplier<Color> colorSupplier) {
+        return new AbstractBorder() {
             @Override
             public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(ACCENT);
+                g2.setColor(colorSupplier.get());
                 g2.drawRoundRect(x, y, w - 1, h - 1, 4, 4);
                 g2.dispose();
             }
-            @Override
-            public Insets getBorderInsets(Component c) { return new Insets(1, 1, 1, 1); }
-            @Override
-            public Insets getBorderInsets(Component c, Insets i) {
-                i.set(1, 1, 1, 1); return i;
-            }
+            @Override public Insets getBorderInsets(Component c)           { return new Insets(1,1,1,1); }
+            @Override public Insets getBorderInsets(Component c, Insets i) { i.set(1,1,1,1); return i; }
         };
     }
 
-    public static Border borderBorder() {
-        return new javax.swing.border.AbstractBorder() {
-            @Override
-            public void paintBorder(Component c, Graphics g, int x, int y, int w, int h) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(BORDER);
-                g2.drawRoundRect(x, y, w - 1, h - 1, 4, 4);
-                g2.dispose();
-            }
-            @Override
-            public Insets getBorderInsets(Component c) { return new Insets(1, 1, 1, 1); }
-            @Override
-            public Insets getBorderInsets(Component c, Insets i) {
-                i.set(1, 1, 1, 1); return i;
-            }
-        };
-    }
+    public static Border accentBorder() { return buildLiveBorder(() -> ACCENT); }
+    public static Border borderBorder() { return buildLiveBorder(() -> BORDER); }
 
     public static Border accentCardBorder() {
         return BorderFactory.createCompoundBorder(accentBorder(), new EmptyBorder(16, 18, 16, 18));

@@ -3,16 +3,35 @@ import javax.swing.border.*;
 import java.awt.*;
 import java.awt.event.*;
 
+/**
+ * SettingsPanel — Settings tab UI.
+ *
+ * Layout (top to bottom):
+ *   - Appearance card:  theme selector + Apply button
+ *   - Admin Access card: password field + Unlock button + status label
+ *   - Admin Tools section (hidden until unlocked):
+ *       header row with Lock Admin button
+ *       2x2 grid of reset action cards
+ *       info footer
+ *
+ * The admin section is toggled via refreshAdminVisibility() after
+ * successful authentication or explicit lock. The password is checked
+ * in plain text against ADMIN_PASSWORD — this is a lightweight local
+ * guard, not a security-critical mechanism.
+ */
 public class SettingsPanel extends JPanel {
 
+    // ── Admin auth ─────────────────────────────────────────────────────────────
     private static final String ADMIN_PASSWORD = "Admin_Tools";
-
     private boolean adminUnlocked = false;
-    private JPanel adminSection;
-    private JLabel lockStatusLabel;
+
+    // ── Auth controls ──────────────────────────────────────────────────────────
+    private JPanel         adminSection;
+    private JLabel         lockStatusLabel;
     private JPasswordField passwordField;
-    private JButton unlockBtn;
-    private JButton lockBtn;
+    private JButton        unlockBtn;
+
+    // ── Constructor ────────────────────────────────────────────────────────────
 
     public SettingsPanel() {
         setLayout(new BorderLayout(10, 10));
@@ -26,13 +45,13 @@ public class SettingsPanel extends JPanel {
         topSection.add(Box.createVerticalStrut(12));
         topSection.add(buildAuthPanel());
 
-        add(topSection, BorderLayout.NORTH);
-        add(buildAdminPanel(), BorderLayout.CENTER);
+        add(topSection,       BorderLayout.NORTH);
+        add(buildAdminPanel(),BorderLayout.CENTER);
 
         refreshAdminVisibility();
     }
 
-    // --- Theme Section ---
+    // ── Appearance card ────────────────────────────────────────────────────────
 
     private JPanel buildThemePanel() {
         JPanel panel = new JPanel(new GridBagLayout());
@@ -41,20 +60,23 @@ public class SettingsPanel extends JPanel {
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5, 8, 5, 8);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.fill   = GridBagConstraints.HORIZONTAL;
 
+        // Title
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 3;
-        JLabel title = new JLabel("🎨  Appearance");
+        JLabel title = new JLabel("\uD83C\uDFA8  Appearance");
         title.setFont(UITheme.HEADER_FONT);
         title.setForeground(UITheme.ACCENT);
         panel.add(title, gbc);
 
+        // Description
         gbc.gridy = 1;
         JLabel desc = new JLabel("Change the app color theme. Applies instantly and saves with your data.");
         desc.setFont(UITheme.BODY_FONT);
         desc.setForeground(UITheme.TEXT_SECONDARY);
         panel.add(desc, gbc);
 
+        // Theme selector row
         gbc.gridy = 2; gbc.gridwidth = 1; gbc.weightx = 0;
         gbc.gridx = 0;
         panel.add(UITheme.label("Theme:"), gbc);
@@ -69,6 +91,7 @@ public class SettingsPanel extends JPanel {
         JButton applyBtn = UITheme.accentButton("Apply");
         applyBtn.addActionListener(e -> {
             UITheme.Theme selected = (UITheme.Theme) themeCombo.getSelectedItem();
+            if (selected == null) return;
             UITheme.applyTheme(selected);
             Window window = SwingUtilities.getWindowAncestor(this);
             if (window != null) UITheme.applyThemeToWindow(window);
@@ -80,7 +103,7 @@ public class SettingsPanel extends JPanel {
         return panel;
     }
 
-    // --- Password Auth Section ---
+    // ── Admin access card ──────────────────────────────────────────────────────
 
     private JPanel buildAuthPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
@@ -89,20 +112,23 @@ public class SettingsPanel extends JPanel {
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(6, 8, 6, 8);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 3;
+        gbc.fill   = GridBagConstraints.HORIZONTAL;
 
+        // Title
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 3;
         JLabel title = new JLabel("[ SETTINGS ]  Admin Access");
         title.setFont(UITheme.HEADER_FONT);
         title.setForeground(UITheme.ACCENT);
         panel.add(title, gbc);
 
+        // Description
         gbc.gridy = 1;
         JLabel desc = new JLabel("Enter the admin password to unlock developer tools.");
         desc.setFont(UITheme.BODY_FONT);
         desc.setForeground(UITheme.TEXT_SECONDARY);
         panel.add(desc, gbc);
 
+        // Password row
         gbc.gridy = 2; gbc.gridwidth = 1; gbc.weightx = 0;
         gbc.gridx = 0;
         panel.add(UITheme.label("Password:"), gbc);
@@ -117,8 +143,7 @@ public class SettingsPanel extends JPanel {
                 new LineBorder(UITheme.BORDER, 1, true),
                 new EmptyBorder(6, 10, 6, 10)
         ));
-        // Allow pressing Enter to submit
-        passwordField.addActionListener(e -> attemptUnlock());
+        passwordField.addActionListener(e -> attemptUnlock()); // Enter key submits
         panel.add(passwordField, gbc);
 
         gbc.gridx = 2; gbc.weightx = 0;
@@ -126,6 +151,7 @@ public class SettingsPanel extends JPanel {
         unlockBtn.addActionListener(e -> attemptUnlock());
         panel.add(unlockBtn, gbc);
 
+        // Status label
         gbc.gridy = 3; gbc.gridx = 0; gbc.gridwidth = 3;
         lockStatusLabel = new JLabel("  Status: Locked");
         lockStatusLabel.setFont(UITheme.BODY_FONT.deriveFont(Font.BOLD));
@@ -135,14 +161,14 @@ public class SettingsPanel extends JPanel {
         return panel;
     }
 
-    // --- Admin Tools Section ---
+    // ── Admin tools section ────────────────────────────────────────────────────
 
     private JPanel buildAdminPanel() {
         adminSection = new JPanel();
         adminSection.setLayout(new BoxLayout(adminSection, BoxLayout.Y_AXIS));
         adminSection.setBackground(UITheme.BG);
 
-        // Header row with lock button
+        // Header row — title + lock button
         JPanel headerRow = new JPanel(new BorderLayout());
         headerRow.setBackground(UITheme.BG);
         headerRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
@@ -152,14 +178,14 @@ public class SettingsPanel extends JPanel {
         adminTitle.setForeground(UITheme.WARNING);
         headerRow.add(adminTitle, BorderLayout.WEST);
 
-        lockBtn = UITheme.dangerButton("Lock Admin");
+        JButton lockBtn = UITheme.dangerButton("Lock Admin");
         lockBtn.addActionListener(e -> lockAdmin());
         headerRow.add(lockBtn, BorderLayout.EAST);
 
         adminSection.add(headerRow);
         adminSection.add(Box.createVerticalStrut(12));
 
-        // Reset cards grid
+        // 2x2 reset card grid
         JPanel grid = new JPanel(new GridLayout(2, 2, 12, 12));
         grid.setBackground(UITheme.BG);
         grid.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
@@ -167,56 +193,43 @@ public class SettingsPanel extends JPanel {
         grid.add(buildResetCard(
                 "Reset Savings Progress",
                 "Clears current savings amount and resets goal back to P1,000.00.",
-                UITheme.WARNING,
-                "Reset Savings",
-                () -> confirmAndRun(
-                        "Reset savings to zero and goal to P1,000.00?",
-                        () -> {
-                            DataStore.getInstance().adminResetSavings();
-                            SaveManager.save();
-                            flash("Savings reset.");
-                        }
-                )
+                UITheme.WARNING, "Reset Savings",
+                () -> confirmAndRun("Reset savings to zero and goal to P1,000.00?", () -> {
+                    DataStore.getInstance().adminResetSavings();
+                    SaveManager.save();
+                    flash("Savings reset.");
+                })
         ));
 
         grid.add(buildResetCard(
                 "Reset XP & Level",
                 "Wipes all XP and sets level back to 1 (Broke Boy). Savings amount is kept.",
-                UITheme.WARNING,
-                "Reset XP",
-                () -> confirmAndRun(
-                        "Reset all XP and level back to 1?",
-                        () -> {
-                            DataStore.getInstance().adminResetXP();
-                            SaveManager.save();
-                            flash("XP reset.");
-                        }
-                )
+                UITheme.WARNING, "Reset XP",
+                () -> confirmAndRun("Reset all XP and level back to 1?", () -> {
+                    DataStore.getInstance().adminResetXP();
+                    SaveManager.save();
+                    flash("XP reset.");
+                })
         ));
 
         grid.add(buildResetCard(
                 "Reset Savings + XP",
-                "Full savings tab wipe — clears savings, goal, XP, and level all at once.",
-                UITheme.DANGER,
-                "Full Savings Reset",
-                () -> confirmAndRun(
-                        "Full reset: savings, goal, XP, and level will all be cleared. Sure?",
-                        () -> {
-                            DataStore.getInstance().adminResetSavings();
-                            DataStore.getInstance().adminResetXP();
-                            SaveManager.save();
-                            flash("Full savings reset done.");
-                        }
-                )
+                "Full savings tab wipe \u2014 clears savings, goal, XP, and level all at once.",
+                UITheme.DANGER, "Full Savings Reset",
+                () -> confirmAndRun("Full reset: savings, goal, XP, and level will all be cleared. Sure?", () -> {
+                    DataStore.getInstance().adminResetSavings();
+                    DataStore.getInstance().adminResetXP();
+                    SaveManager.save();
+                    flash("Full savings reset done.");
+                })
         ));
 
         grid.add(buildResetCard(
                 "Reset Everything",
                 "Nuclear option. Wipes all expenses, budget, savings, XP, and level.",
-                UITheme.DANGER,
-                "FULL APP RESET",
+                UITheme.DANGER, "FULL APP RESET",
                 () -> confirmAndRun(
-                        "This will wipe ALL data — expenses, budget, savings, and XP. No undo. Really?",
+                        "This will wipe ALL data \u2014 expenses, budget, savings, and XP. No undo. Really?",
                         () -> {
                             DataStore store = DataStore.getInstance();
                             store.adminResetExpenses();
@@ -232,14 +245,13 @@ public class SettingsPanel extends JPanel {
         adminSection.add(grid);
         adminSection.add(Box.createVerticalStrut(16));
 
-        // Info footer
-        JLabel footer = new JLabel("  All resets auto-save immediately. Use [SAVE] in the header to manually save at any time.");
+        // Footer hint
+        JLabel footer = new JLabel("  All resets auto-save immediately.");
         footer.setFont(UITheme.SMALL_FONT);
         footer.setForeground(UITheme.TEXT_SECONDARY);
         footer.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
         adminSection.add(footer);
 
-        // Wrap in scroll pane
         JScrollPane scroll = new JScrollPane(adminSection);
         scroll.setBorder(null);
         scroll.getViewport().setBackground(UITheme.BG);
@@ -277,14 +289,14 @@ public class SettingsPanel extends JPanel {
         JPanel top = new JPanel(new BorderLayout(0, 4));
         top.setBackground(UITheme.CARD);
         top.add(titleLbl, BorderLayout.NORTH);
-        top.add(descLbl, BorderLayout.CENTER);
+        top.add(descLbl,  BorderLayout.CENTER);
 
         card.add(top, BorderLayout.CENTER);
         card.add(btn, BorderLayout.SOUTH);
         return card;
     }
 
-    // --- Auth Logic ---
+    // ── Auth logic ─────────────────────────────────────────────────────────────
 
     private void attemptUnlock() {
         String entered = new String(passwordField.getPassword());
@@ -300,7 +312,6 @@ public class SettingsPanel extends JPanel {
             passwordField.setText("");
             lockStatusLabel.setText("  Status: Wrong password.");
             lockStatusLabel.setForeground(UITheme.DANGER);
-            // Shake the field
             shakeComponent(passwordField);
         }
     }
@@ -319,12 +330,13 @@ public class SettingsPanel extends JPanel {
         adminSection.setVisible(adminUnlocked);
     }
 
-    // --- Helpers ---
+    // ── Helper dialogs ─────────────────────────────────────────────────────────
 
     private void confirmAndRun(String message, Runnable action) {
-        int result = JOptionPane.showConfirmDialog(this,
-                message, "Confirm Admin Action",
-                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        int result = JOptionPane.showConfirmDialog(
+                this, message, "Confirm Admin Action",
+                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE
+        );
         if (result == JOptionPane.YES_OPTION) action.run();
     }
 
@@ -332,11 +344,13 @@ public class SettingsPanel extends JPanel {
         JOptionPane.showMessageDialog(this, message, "Admin", JOptionPane.INFORMATION_MESSAGE);
     }
 
+    // ── Password field shake animation ─────────────────────────────────────────
+
     private void shakeComponent(JComponent comp) {
-        Point origin = comp.getLocation();
-        Timer shaker = new Timer(30, null);
+        Point    origin  = comp.getLocation();
+        int[]    offsets = {-8, 8, -6, 6, -4, 4, -2, 2, 0};
         final int[] tick = {0};
-        final int[] offsets = {-8, 8, -6, 6, -4, 4, -2, 2, 0};
+        Timer shaker = new Timer(30, null);
         shaker.addActionListener(e -> {
             if (tick[0] < offsets.length) {
                 comp.setLocation(origin.x + offsets[tick[0]], origin.y);
