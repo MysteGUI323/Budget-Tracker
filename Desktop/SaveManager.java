@@ -47,6 +47,8 @@ public class SaveManager {
         try (BufferedWriter w = new BufferedWriter(new FileWriter(SAVE_FILE))) {
             w.write("BUDGET="          + store.getMonthlyBudget());            w.newLine();
             w.write("BUDGET_PERIOD="   + store.getBudgetPeriod().displayName); w.newLine();
+            w.write("NEEDS_PERCENT="   + store.getNeedsPercent());             w.newLine();
+            w.write("TRACKING_MODE="   + store.getTrackingMode().displayName); w.newLine();
             w.write("SAVINGS_GOAL="    + store.getSavingsGoal());              w.newLine();
             w.write("CURRENT_SAVINGS=" + store.getCurrentSavings());           w.newLine();
             w.write("TOTAL_XP="        + store.getTotalXP());                  w.newLine();
@@ -63,6 +65,16 @@ public class SaveManager {
                         + safeDesc        + "|"
                         + e.getAmount()
                 );
+                w.newLine();
+            }
+
+            // Savings goals
+            java.util.List<DataStore.SavingsGoal> goals = store.getSavingsGoals();
+            w.write("GOAL_COUNT=" + goals.size()); w.newLine();
+            for (int i = 0; i < goals.size(); i++) {
+                DataStore.SavingsGoal g    = goals.get(i);
+                String                safe = g.getName().replace("|", "\\|");
+                w.write("GOAL_" + i + "=" + safe + "|" + g.getTargetAmount() + "|" + g.isAchieved());
                 w.newLine();
             }
 
@@ -101,6 +113,7 @@ public class SaveManager {
         int           totalXP       = 0;
         int           level         = 1;
         List<Expense> expenses      = new ArrayList<>();
+        List<DataStore.SavingsGoal> goals = new ArrayList<>();
 
         try (BufferedReader r = new BufferedReader(new FileReader(file))) {
             String line;
@@ -117,16 +130,22 @@ public class SaveManager {
                 switch (key) {
                     case "BUDGET":          budget         = Double.parseDouble(value);             break;
                     case "BUDGET_PERIOD":   store.restoreBudgetPeriod(DataStore.BudgetPeriod.fromString(value)); break;
+                    case "NEEDS_PERCENT":   store.restoreNeedsPercent(Double.parseDouble(value));   break;
+                    case "TRACKING_MODE":   store.restoreTrackingMode(DataStore.TrackingMode.fromString(value)); break;
                     case "SAVINGS_GOAL":    savingsGoal    = Double.parseDouble(value);             break;
                     case "CURRENT_SAVINGS": currentSavings = Double.parseDouble(value);             break;
                     case "TOTAL_XP":        totalXP        = Integer.parseInt(value);               break;
                     case "LEVEL":           level          = Integer.parseInt(value);               break;
                     case "THEME":           UITheme.applyTheme(UITheme.Theme.fromString(value));    break;
                     case "EXPENSE_COUNT":   /* informational only — list built from EXPENSE_N keys */ break;
+                    case "GOAL_COUNT":      /* informational only — list built from GOAL_N keys */    break;
                     default:
                         if (key.startsWith("EXPENSE_")) {
                             Expense e = parseExpense(value);
                             if (e != null) expenses.add(e);
+                        } else if (key.startsWith("GOAL_")) {
+                            DataStore.SavingsGoal g = parseGoal(value);
+                            if (g != null) goals.add(g);
                         }
                         break;
                 }
@@ -139,6 +158,7 @@ public class SaveManager {
         store.restoreSavings(currentSavings);
         store.restoreXP(totalXP, level);
         store.restoreExpenses(expenses);
+        store.restoreSavingsGoals(goals);
     }
 
     // ── Expense line parser ────────────────────────────────────────────────────
@@ -146,20 +166,43 @@ public class SaveManager {
     /**
      * Parses a single expense line.
      * Format: date|category|description|amount
-     * Pipe characters inside description are escaped as \|.
      */
     private static Expense parseExpense(String value) {
-        String[] parts = value.split("(?<!\\\\)\\|", 4); // split on unescaped pipes
+        String[] parts = value.split("(?<!\\\\)\\|", 4);
         if (parts.length != 4) return null;
 
         try {
             LocalDate date        = LocalDate.parse(parts[0].trim());
             String    category    = parts[1].trim();
-            String    description = parts[2].trim().replace("\\|", "|"); // unescape
+            String    description = parts[2].trim().replace("\\|", "|");
             double    amount      = Double.parseDouble(parts[3].trim());
             return new Expense(description, amount, category, date);
         } catch (Exception ex) {
             System.err.println("[SaveManager] Skipping bad expense entry: " + value);
+            return null;
+        }
+    }
+
+    // ── Goal line parser ───────────────────────────────────────────────────────
+
+    /**
+     * Parses a single savings goal line.
+     * Format: name|targetAmount|achieved
+     * Pipe characters inside name are escaped as \|.
+     */
+    private static DataStore.SavingsGoal parseGoal(String value) {
+        String[] parts = value.split("(?<!\\\\)\\|", 3);
+        if (parts.length != 3) return null;
+
+        try {
+            String  name     = parts[0].trim().replace("\\|", "|");
+            double  target   = Double.parseDouble(parts[1].trim());
+            boolean achieved = Boolean.parseBoolean(parts[2].trim());
+            DataStore.SavingsGoal goal = new DataStore.SavingsGoal(name, target);
+            goal.setAchieved(achieved);
+            return goal;
+        } catch (Exception ex) {
+            System.err.println("[SaveManager] Skipping bad goal entry: " + value);
             return null;
         }
     }

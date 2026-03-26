@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.time.LocalDate;
 
@@ -8,17 +9,20 @@ import java.time.LocalDate;
  * Owns all runtime state:
  *   - Expense list
  *   - Budget amount + period
- *   - Savings goal + current savings
+ *   - Needs/wants split percentage
+ *   - Tracking mode (BASIC or ADVANCED)
+ *   - Single savings goal + current savings (legacy)
+ *   - Multi-goal savings list (SavingsGoal)
  *   - XP / level / gamification
  *
  * Panels register Runnable listeners via addListener(); every mutating
  * method calls notifyListeners() so the UI stays in sync automatically.
  *
- * Budget math overview:
- *   getProratedBudget()               → how much you should have spent by today
- *   getRemainingProrated()            → prorated budget minus period expenses
- *   getDailyAllowance()               → remaining budget divided by days left
- *   getTotalExpensesForCurrentPeriod()→ expenses filtered to the active period only
+ * SavingsGoal behavior:
+ *   - All goals share the same currentSavings pool
+ *   - Progress = currentSavings / goal.targetAmount (capped at 100%)
+ *   - When claimed, targetAmount is subtracted from currentSavings
+ *     and the goal is marked achieved
  */
 public class DataStore {
 
@@ -31,6 +35,63 @@ public class DataStore {
     public static DataStore getInstance() {
         if (instance == null) instance = new DataStore();
         return instance;
+    }
+
+    // ── SavingsGoal inner class ────────────────────────────────────────────────
+
+    public static class SavingsGoal {
+        private String  name;
+        private double  targetAmount;
+        private boolean achieved;
+
+        public SavingsGoal(String name, double targetAmount) {
+            this.name         = name;
+            this.targetAmount = targetAmount;
+            this.achieved     = false;
+        }
+
+        public String  getName()         { return name; }
+        public double  getTargetAmount() { return targetAmount; }
+        public boolean isAchieved()      { return achieved; }
+        public void    setAchieved(boolean achieved) { this.achieved = achieved; }
+
+        @Override
+        public String toString() {
+            return name + "|" + targetAmount + "|" + achieved;
+        }
+
+        public static SavingsGoal fromString(String s) {
+            String[] parts = s.split("\\|", 3);
+            if (parts.length != 3) return null;
+            try {
+                SavingsGoal goal = new SavingsGoal(
+                        parts[0].trim(),
+                        Double.parseDouble(parts[1].trim())
+                );
+                goal.achieved = Boolean.parseBoolean(parts[2].trim());
+                return goal;
+            } catch (Exception e) {
+                return null;
+            }
+        }
+    }
+
+    // ── Tracking mode enum ────────────────────────────────────────────────────
+
+    public enum TrackingMode {
+        BASIC("Basic"),
+        ADVANCED("Advanced");
+
+        public final String displayName;
+        TrackingMode(String displayName) { this.displayName = displayName; }
+
+        @Override public String toString() { return displayName; }
+
+        public static TrackingMode fromString(String s) {
+            for (TrackingMode m : values())
+                if (m.displayName.equals(s)) return m;
+            return BASIC;
+        }
     }
 
     // ── Budget Period enum ─────────────────────────────────────────────────────
@@ -75,16 +136,33 @@ public class DataStore {
 
     // ── State ──────────────────────────────────────────────────────────────────
 
-    private BudgetPeriod   budgetPeriod   = BudgetPeriod.MONTHLY;
-    private double         monthlyBudget  = 5000.0;
-    private List<Expense>  expenses       = new ArrayList<>();
-    private double         savingsGoal    = 1000.0;
-    private double         currentSavings = 0.0;
-    private final List<Runnable> listeners = new ArrayList<>();
+    private BudgetPeriod         budgetPeriod   = BudgetPeriod.MONTHLY;
+    private double               monthlyBudget  = 5000.0;
+    private double               needsPercent   = 50.0;
+    private TrackingMode         trackingMode   = TrackingMode.BASIC;
+    private List<Expense>        expenses       = new ArrayList<>();
+    private double               savingsGoal    = 1000.0;
+    private double               currentSavings = 0.0;
+    private List<SavingsGoal>    savingsGoals   = new ArrayList<>();
+    private final List<Runnable> listeners      = new ArrayList<>();
 
     // XP / gamification
     private int totalXP = 0;
     private int level   = 1;
+
+    // ── Needs / wants category mapping ────────────────────────────────────────
+
+    public static boolean isNeedsCategory(String category) {
+        switch (category) {
+            case "Food":
+            case "Transport":
+            case "School":
+            case "Health":
+                return true;
+            default:
+                return false;
+        }
+    }
 
     // ── Listener system ────────────────────────────────────────────────────────
 
@@ -95,57 +173,101 @@ public class DataStore {
     /** Forces all panels to re-render — used after a theme change. */
     public void forceRefresh() { notifyListeners(); }
 
+    // ── Tracking mode ──────────────────────────────────────────────────────────
+
+    public TrackingMode getTrackingMode() { return trackingMode; }
+
+    public void setTrackingMode(TrackingMode mode) {
+        this.trackingMode = mode;
+        notifyListeners();
+    }
+
     // ── Budget period ──────────────────────────────────────────────────────────
 
     public BudgetPeriod getBudgetPeriod() { return budgetPeriod; }
 
     public void setBudgetPeriod(BudgetPeriod period) {
         this.budgetPeriod  = period;
-        this.monthlyBudget = 0.0; // user must set a new amount for the new period
+        this.monthlyBudget = 0.0;
         notifyListeners();
     }
 
-    /**
-     * Returns the calendar date on which the current budget period started.
-     * Used to filter expenses to the active period only.
-     */
     public LocalDate getPeriodStart() {
         LocalDate now = LocalDate.now();
         switch (budgetPeriod) {
-            case WEEKLY:  return now.minusDays(now.getDayOfWeek().getValue() - 1); // Monday
+            case WEEKLY:  return now.minusDays(now.getDayOfWeek().getValue() - 1);
             case YEARLY:  return LocalDate.of(now.getYear(), 1, 1);
-            default:      return LocalDate.of(now.getYear(), now.getMonth(), 1);   // MONTHLY
+            default:      return LocalDate.of(now.getYear(), now.getMonth(), 1);
         }
     }
 
-    // ── Budget calculations ────────────────────────────────────────────────────
+    // ── Needs / wants split ────────────────────────────────────────────────────
 
-    /**
-     * Prorated budget = (total budget / period days) x days elapsed.
-     * Represents the maximum you should have spent in total by today.
-     */
+    public double getNeedsPercent() { return needsPercent; }
+    public double getWantsPercent() { return 100.0 - needsPercent; }
+
+    public void setNeedsPercent(double percent) {
+        this.needsPercent = Math.max(0, Math.min(100, percent));
+        notifyListeners();
+    }
+
+    public double getNeedsBudget() { return monthlyBudget * (needsPercent / 100.0); }
+    public double getWantsBudget() { return monthlyBudget * ((100.0 - needsPercent) / 100.0); }
+
+    // ── Budget calculations — total ────────────────────────────────────────────
+
     public double getProratedBudget() {
         if (monthlyBudget <= 0) return 0;
         int elapsed = Math.max(1, budgetPeriod.daysElapsed());
         return (monthlyBudget / budgetPeriod.days) * elapsed;
     }
 
-    /**
-     * How much headroom is left relative to the prorated ceiling.
-     * Negative means you have already overspent for this point in the period.
-     */
     public double getRemainingProrated() {
         return getProratedBudget() - getTotalExpensesForCurrentPeriod();
     }
 
-    /**
-     * Forward-looking daily allowance: remaining budget divided by days left.
-     * Returns 0 on the last day of a period (no days left to divide across).
-     */
     public double getDailyAllowance() {
         int daysLeft = budgetPeriod.days - budgetPeriod.daysElapsed();
         if (daysLeft <= 0) return 0;
         double remaining = monthlyBudget - getTotalExpensesForCurrentPeriod();
+        return Math.max(remaining / daysLeft, 0);
+    }
+
+    // ── Budget calculations — needs ────────────────────────────────────────────
+
+    public double getNeedsProratedBudget() {
+        if (getNeedsBudget() <= 0) return 0;
+        int elapsed = Math.max(1, budgetPeriod.daysElapsed());
+        return (getNeedsBudget() / budgetPeriod.days) * elapsed;
+    }
+
+    public double getNeedsRemainingProrated() {
+        return getNeedsProratedBudget() - getNeedsSpentThisPeriod();
+    }
+
+    public double getNeedsDailyAllowance() {
+        int daysLeft = budgetPeriod.days - budgetPeriod.daysElapsed();
+        if (daysLeft <= 0) return 0;
+        double remaining = getNeedsBudget() - getNeedsSpentThisPeriod();
+        return Math.max(remaining / daysLeft, 0);
+    }
+
+    // ── Budget calculations — wants ────────────────────────────────────────────
+
+    public double getWantsProratedBudget() {
+        if (getWantsBudget() <= 0) return 0;
+        int elapsed = Math.max(1, budgetPeriod.daysElapsed());
+        return (getWantsBudget() / budgetPeriod.days) * elapsed;
+    }
+
+    public double getWantsRemainingProrated() {
+        return getWantsProratedBudget() - getWantsSpentThisPeriod();
+    }
+
+    public double getWantsDailyAllowance() {
+        int daysLeft = budgetPeriod.days - budgetPeriod.daysElapsed();
+        if (daysLeft <= 0) return 0;
+        double remaining = getWantsBudget() - getWantsSpentThisPeriod();
         return Math.max(remaining / daysLeft, 0);
     }
 
@@ -163,15 +285,12 @@ public class DataStore {
         }
     }
 
-    /** Returns a defensive copy of the full expense list. */
     public List<Expense> getExpenses() { return new ArrayList<>(expenses); }
 
-    /** All-time total across every logged expense. */
     public double getTotalExpenses() {
         return expenses.stream().mapToDouble(Expense::getAmount).sum();
     }
 
-    /** Period-filtered total — only counts expenses from the current budget period. */
     public double getTotalExpensesForCurrentPeriod() {
         LocalDate periodStart = getPeriodStart();
         return expenses.stream()
@@ -180,7 +299,22 @@ public class DataStore {
                 .sum();
     }
 
-    /** All-time total for a specific category. */
+    public double getNeedsSpentThisPeriod() {
+        LocalDate periodStart = getPeriodStart();
+        return expenses.stream()
+                .filter(e -> !e.getDate().isBefore(periodStart) && isNeedsCategory(e.getCategory()))
+                .mapToDouble(Expense::getAmount)
+                .sum();
+    }
+
+    public double getWantsSpentThisPeriod() {
+        LocalDate periodStart = getPeriodStart();
+        return expenses.stream()
+                .filter(e -> !e.getDate().isBefore(periodStart) && !isNeedsCategory(e.getCategory()))
+                .mapToDouble(Expense::getAmount)
+                .sum();
+    }
+
     public double getTotalByCategory(String category) {
         return expenses.stream()
                 .filter(e -> e.getCategory().equals(category))
@@ -197,7 +331,7 @@ public class DataStore {
         notifyListeners();
     }
 
-    // ── Savings ────────────────────────────────────────────────────────────────
+    // ── Single savings goal (legacy) ───────────────────────────────────────────
 
     public double getSavingsGoal() { return savingsGoal; }
 
@@ -214,6 +348,55 @@ public class DataStore {
         notifyListeners();
     }
 
+    /**
+     * Withdraws an amount from savings.
+     * Deducts 1 XP per peso withdrawn, minimum 1 XP deducted total.
+     * Savings floor is 0 — cannot go negative.
+     */
+    public void withdrawSavings(double amount) {
+        double actual = Math.min(amount, currentSavings); // can't go below 0
+        this.currentSavings -= actual;
+        int xpPenalty = Math.max(1, (int) actual);
+        this.totalXP  = Math.max(0, this.totalXP - xpPenalty);
+        // Recalculate level downward if XP dropped below current level threshold
+        while (level > 1 && totalXP < xpAtLevelStart()) level--;
+        notifyListeners();
+    }
+
+    // ── Multi-goal savings list ────────────────────────────────────────────────
+
+    /** Returns an unmodifiable view of the savings goals list. */
+    public List<SavingsGoal> getSavingsGoals() {
+        return Collections.unmodifiableList(savingsGoals);
+    }
+
+    public void addSavingsGoal(String name, double targetAmount) {
+        savingsGoals.add(new SavingsGoal(name, targetAmount));
+        notifyListeners();
+    }
+
+    public void removeSavingsGoal(int index) {
+        if (index >= 0 && index < savingsGoals.size()) {
+            savingsGoals.remove(index);
+            notifyListeners();
+        }
+    }
+
+    /**
+     * Claims a savings goal — subtracts its target from currentSavings
+     * and marks it as achieved. Does nothing if already achieved or
+     * if savings are insufficient.
+     */
+    public void claimSavingsGoal(int index) {
+        if (index < 0 || index >= savingsGoals.size()) return;
+        SavingsGoal goal = savingsGoals.get(index);
+        if (goal.isAchieved()) return;
+        if (currentSavings < goal.getTargetAmount()) return;
+        currentSavings -= goal.getTargetAmount();
+        goal.setAchieved(true);
+        notifyListeners();
+    }
+
     // ── XP / Gamification ─────────────────────────────────────────────────────
 
     public int getTotalXP()         { return totalXP; }
@@ -221,7 +404,6 @@ public class DataStore {
     public int getXPForNextLevel()  { return 100 * level; }
     public int getCurrentLevelXP() { return totalXP - xpAtLevelStart(); }
 
-    /** Cumulative XP threshold at the start of the current level. */
     private int xpAtLevelStart() {
         int sum = 0;
         for (int i = 1; i < level; i++) sum += 100 * i;
@@ -234,13 +416,12 @@ public class DataStore {
         notifyListeners();
     }
 
-    /** XP earned for a savings deposit: 1 XP per P10, minimum 5 XP. */
     public int calcXPForAmount(double amount) {
         return Math.max(5, (int)(amount / 10));
     }
 
     public static final String[] TITLES = {
-            "",                  // index 0 — unused placeholder
+            "",
             "Broke Boy",
             "Budget Apprentice",
             "Penny Pincher",
@@ -258,18 +439,21 @@ public class DataStore {
     }
 
     // ── Save/Load restore methods ──────────────────────────────────────────────
-    // Bypass listeners and XP logic — called only by SaveManager on startup.
 
     public void restoreExpenses(List<Expense> saved)      { this.expenses = new ArrayList<>(saved); }
     public void restoreSavings(double savings)            { this.currentSavings = savings; }
     public void restoreXP(int xp, int lvl)               { this.totalXP = xp; this.level = lvl; }
     public void restoreBudgetPeriod(BudgetPeriod period)  { this.budgetPeriod = period; }
+    public void restoreNeedsPercent(double percent)       { this.needsPercent = percent; }
+    public void restoreTrackingMode(TrackingMode mode)    { this.trackingMode = mode; }
+    public void restoreSavingsGoals(List<SavingsGoal> goals) { this.savingsGoals = new ArrayList<>(goals); }
 
     // ── Admin reset methods ────────────────────────────────────────────────────
 
     public void adminResetSavings() {
         this.currentSavings = 0.0;
         this.savingsGoal    = 1000.0;
+        this.savingsGoals.clear();
         notifyListeners();
     }
 
@@ -286,6 +470,8 @@ public class DataStore {
 
     public void adminResetBudget() {
         this.monthlyBudget = 5000.0;
+        this.needsPercent  = 50.0;
+        this.trackingMode  = TrackingMode.BASIC;
         notifyListeners();
     }
 }
