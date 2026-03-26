@@ -1,6 +1,11 @@
 package com.mystegui.budgettracker
 
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -54,10 +59,42 @@ class MainActivity : ComponentActivity() {
     private val viewModel: BudgetViewModel by viewModels {
         BudgetViewModelFactory(SaveManager(this))
     }
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            ReminderManager.scheduleReminder(
+                this,
+                ReminderManager.getSavedHour(this),
+                ReminderManager.getSavedMinute(this)
+            )
+        }
+    }
 
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    // Already granted, schedule it
+                    if (ReminderManager.isReminderEnabled(this)) {
+                        ReminderManager.scheduleReminder(
+                            this,
+                            ReminderManager.getSavedHour(this),
+                            ReminderManager.getSavedMinute(this)
+                        )
+                    }
+                }
+                else -> requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        ReminderManager.createNotificationChannel(this)
+        requestNotificationPermission()
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
             val appColors = appColorsForTheme(state.theme)
