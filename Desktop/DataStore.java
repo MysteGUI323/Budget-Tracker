@@ -278,6 +278,13 @@ public class DataStore {
         notifyListeners();
     }
 
+    /** Inserts an expense at a specific index — used by ExpensePanel when editing a row. */
+    public void addExpenseAt(int index, Expense e) {
+        int safeIndex = Math.max(0, Math.min(index, expenses.size()));
+        expenses.add(safeIndex, e);
+        notifyListeners();
+    }
+
     public void removeExpense(int index) {
         if (index >= 0 && index < expenses.size()) {
             expenses.remove(index);
