@@ -6,18 +6,14 @@ import java.util.List;
 /**
  * SavingsPanel — Savings tab UI.
  *
- * Layout (top to bottom):
- *   TOP    — two side-by-side cards: Set Savings Goal | Add to Savings
- *   CENTER — two side-by-side cards: Savings Progress | Level Badge (Saver Rank)
- *   GOALS  — savings goals section: add form + scrollable goal cards
- *   BOTTOM — XP progress bar panel
- *
- * Multi-goal behavior:
- *   - All goals share the same currentSavings pool
- *   - Each goal shows its own progress bar filled by currentSavings vs target
- *   - When affordable (100%), a Claim button appears
- *   - Claiming deducts the target from currentSavings and marks achieved
- *   - Goals can be removed at any time via Remove button
+ * Layout (matches wireframe):
+ *   NORTH  — XP bar panel, full width, spans both columns
+ *   CENTER — horizontal split (left | right):
+ *       LEFT  (scrollable, ~40% width)
+ *           stacked info cards: Set Goal, Add/Withdraw, Savings Progress, Level Badge
+ *       RIGHT (fills rest)
+ *           Add Goal form at the top
+ *           Scrollable goal cards list below
  */
 public class SavingsPanel extends JPanel {
 
@@ -45,7 +41,7 @@ public class SavingsPanel extends JPanel {
     private JLabel titleLabel;
     private JLabel xpInfoLabel;
 
-    // ── XP bar ─────────────────────────────────────────────────────────────────
+    // ── XP bar (full-width, top) ───────────────────────────────────────────────
     private JProgressBar xpBar;
 
     // ── Goals list panel (rebuilt on refresh) ─────────────────────────────────
@@ -54,146 +50,214 @@ public class SavingsPanel extends JPanel {
     // ── Constructor ────────────────────────────────────────────────────────────
 
     public SavingsPanel() {
-        setLayout(new BorderLayout(10, 12));
+        setLayout(new BorderLayout(0, 10));
         setBackground(UITheme.BG);
         setBorder(new EmptyBorder(20, 20, 20, 20));
 
-        // Wrap everything in a scroll pane so goals don't get clipped
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(UITheme.BG);
+        // XP bar spans full width at the very top
+        add(buildXPPanel(),   BorderLayout.NORTH);
 
-        JPanel top    = buildTopPanel();
-        JPanel center = buildCenterPanel();
-        JPanel goals  = buildGoalsSection();
-        JPanel xp     = buildXPPanel();
-
-        top.setAlignmentX(Component.LEFT_ALIGNMENT);
-        center.setAlignmentX(Component.LEFT_ALIGNMENT);
-        goals.setAlignmentX(Component.LEFT_ALIGNMENT);
-        xp.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        content.add(top);
-        content.add(Box.createVerticalStrut(12));
-        content.add(center);
-        content.add(Box.createVerticalStrut(12));
-        content.add(goals);
-        content.add(Box.createVerticalStrut(12));
-        content.add(xp);
-
-        JScrollPane scroll = new JScrollPane(content);
-        scroll.setBorder(null);
-        scroll.getViewport().setBackground(UITheme.BG);
-        scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        add(scroll, BorderLayout.CENTER);
+        // Two-column body fills the rest
+        add(buildBodySplit(), BorderLayout.CENTER);
 
         store.addListener(this::refresh);
         refresh();
     }
 
-    // ── TOP: Set Goal + Deposit ────────────────────────────────────────────────
+    // ── NORTH: full-width XP bar ───────────────────────────────────────────────
 
-    private JPanel buildTopPanel() {
-        JPanel panel = new JPanel(new GridLayout(1, 2, 12, 0));
-        panel.setBackground(UITheme.BG);
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 240));
+    private JPanel buildXPPanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 6));
+        panel.setBackground(UITheme.CARD);
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                new LineBorder(UITheme.BORDER, 1, true),
+                new EmptyBorder(12, 14, 12, 14)
+        ));
 
-        // Set Goal card
-        JPanel goalCard = buildCard(UITheme.ACCENT);
-        GridBagConstraints gbc = cardGbc();
+        JLabel xpTitle = new JLabel("\u26A1  Experience Points");
+        xpTitle.setFont(UITheme.HEADER_FONT);
+        xpTitle.setForeground(UITheme.WARNING);
+        panel.add(xpTitle, BorderLayout.NORTH);
 
-        JLabel goalTitle = new JLabel("\uD83C\uDFAF  Set Savings Goal");
-        goalTitle.setFont(UITheme.HEADER_FONT);
-        goalTitle.setForeground(UITheme.ACCENT);
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
-        goalCard.add(goalTitle, gbc);
+        xpBar = new JProgressBar(0, 100);
+        xpBar.setStringPainted(true);
+        xpBar.setFont(UITheme.BODY_FONT.deriveFont(Font.BOLD));
+        xpBar.setBackground(UITheme.BG);
+        xpBar.setForeground(UITheme.WARNING);
+        xpBar.setBorder(new LineBorder(UITheme.BORDER, 1));
+        panel.add(xpBar, BorderLayout.CENTER);
 
-        gbc.gridwidth = 1; gbc.gridy = 1;
-        gbc.gridx = 0; gbc.weightx = 0;
-        goalCard.add(UITheme.SymbolLabel("Goal Amount (\u20B1):"), gbc);
+        JLabel hint = new JLabel("  +1 XP per \u20B110 saved  \u2022  Minimum +5 XP per deposit");
+        hint.setFont(UITheme.SYMBOL_SMALL_FONT);
+        hint.setForeground(UITheme.TEXT_SECONDARY);
+        panel.add(hint, BorderLayout.SOUTH);
 
-        gbc.gridx = 1; gbc.weightx = 1.0;
-        goalField = UITheme.textField("1000.00");
-        goalCard.add(goalField, gbc);
-
-        gbc.gridy = 2; gbc.gridx = 0; gbc.gridwidth = 2;
-        JButton setGoalBtn = UITheme.accentButton("Set Goal");
-        setGoalBtn.addActionListener(e -> applyGoal());
-        goalCard.add(setGoalBtn, gbc);
-
-        // Add to Savings card
-        JPanel depositCard = buildCard(UITheme.SUCCESS);
-        GridBagConstraints gbc2 = cardGbc();
-
-        JLabel depositTitle = new JLabel("\uD83D\uDCB5  Add / Withdraw Savings");
-        depositTitle.setFont(UITheme.HEADER_FONT);
-        depositTitle.setForeground(UITheme.SUCCESS);
-        gbc2.gridx = 0; gbc2.gridy = 0; gbc2.gridwidth = 2;
-        depositCard.add(depositTitle, gbc2);
-
-        // Deposit row
-        gbc2.gridwidth = 1; gbc2.gridy = 1;
-        gbc2.gridx = 0; gbc2.weightx = 0;
-        depositCard.add(UITheme.SymbolLabel("Amount to Save (\u20B1):"), gbc2);
-
-        gbc2.gridx = 1; gbc2.weightx = 1.0;
-        depositField = UITheme.textField("0.00");
-        depositCard.add(depositField, gbc2);
-
-        gbc2.gridy = 2; gbc2.gridx = 0; gbc2.gridwidth = 2;
-        JButton depositBtn = UITheme.successButton("Add Savings  +XP");
-        depositBtn.addActionListener(e -> deposit());
-        depositCard.add(depositBtn, gbc2);
-
-        // Divider
-        gbc2.gridy = 3; gbc2.gridwidth = 2;
-        JSeparator divider = new JSeparator();
-        divider.setForeground(UITheme.BORDER);
-        depositCard.add(divider, gbc2);
-
-        // Withdraw row
-        gbc2.gridwidth = 1; gbc2.gridy = 4;
-        gbc2.gridx = 0; gbc2.weightx = 0;
-        depositCard.add(UITheme.SymbolLabel("Amount to Withdraw (\u20B1):"), gbc2);
-
-        gbc2.gridx = 1; gbc2.weightx = 1.0;
-        withdrawField = UITheme.textField("0.00");
-        depositCard.add(withdrawField, gbc2);
-
-        gbc2.gridy = 5; gbc2.gridx = 0; gbc2.gridwidth = 2;
-        JButton withdrawBtn = UITheme.dangerButton("Withdraw  \u22121 XP");
-        withdrawBtn.addActionListener(e -> withdraw());
-        depositCard.add(withdrawBtn, gbc2);
-
-        panel.add(goalCard);
-        panel.add(depositCard);
         return panel;
     }
 
-    // ── CENTER: Savings Progress + Level Badge ─────────────────────────────────
+    // ── CENTER: left scrollable column | right goals column ───────────────────
 
-    private JPanel buildCenterPanel() {
-        JPanel panel = new JPanel(new GridLayout(1, 2, 12, 0));
-        panel.setBackground(UITheme.BG);
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 220));
+    private JSplitPane buildBodySplit() {
+        JSplitPane split = new JSplitPane(
+                JSplitPane.HORIZONTAL_SPLIT,
+                buildLeftColumn(),
+                buildRightColumn()
+        );
+        split.setDividerLocation(360);
+        split.setDividerSize(8);
+        split.setBorder(null);
+        split.setBackground(UITheme.BG);
+        split.setResizeWeight(0.38);
+        return split;
+    }
 
-        // Savings progress card
-        JPanel progressCard = buildCard(UITheme.BORDER);
+    // ── LEFT: scrollable info islands ─────────────────────────────────────────
+
+    private JScrollPane buildLeftColumn() {
+        JPanel col = new JPanel();
+        col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
+        col.setBackground(UITheme.BG);
+        col.setBorder(new EmptyBorder(0, 0, 0, 6));
+
+        JPanel setGoalCard  = buildSetGoalCard();
+        JPanel depositCard  = buildDepositCard();
+        JPanel progressCard = buildProgressCard();
+        levelBadge          = buildLevelBadge();
+
+        for (JPanel card : new JPanel[]{setGoalCard, depositCard, progressCard, levelBadge}) {
+            card.setAlignmentX(Component.LEFT_ALIGNMENT);
+            col.add(card);
+            col.add(Box.createVerticalStrut(10));
+        }
+        col.add(Box.createVerticalGlue());
+
+        JScrollPane scroll = new JScrollPane(col);
+        scroll.setBorder(new LineBorder(UITheme.BORDER, 1, true));
+        scroll.getViewport().setBackground(UITheme.BG);
+        scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        return scroll;
+    }
+
+    // ── RIGHT: Add Goal form + goal list ──────────────────────────────────────
+
+    private JPanel buildRightColumn() {
+        JPanel col = new JPanel(new BorderLayout(0, 8));
+        col.setBackground(UITheme.BG);
+        col.setBorder(new EmptyBorder(0, 6, 0, 0));
+
+        JPanel northWrapper = new JPanel(new BorderLayout(0, 8));
+        northWrapper.setBackground(UITheme.BG);
+
+        JLabel sectionTitle = new JLabel("\uD83C\uDFAF  Savings Goals");
+        sectionTitle.setFont(UITheme.HEADER_FONT);
+        sectionTitle.setForeground(UITheme.TEXT_PRIMARY);
+        northWrapper.add(sectionTitle,      BorderLayout.NORTH);
+        northWrapper.add(buildAddGoalForm(), BorderLayout.CENTER);
+
+        col.add(northWrapper, BorderLayout.NORTH);
+
+        goalsListPanel = new JPanel();
+        goalsListPanel.setLayout(new BoxLayout(goalsListPanel, BoxLayout.Y_AXIS));
+        goalsListPanel.setBackground(UITheme.BG);
+
+        JScrollPane goalsScroll = new JScrollPane(goalsListPanel);
+        goalsScroll.setBorder(new LineBorder(UITheme.BORDER, 1, true));
+        goalsScroll.getViewport().setBackground(UITheme.BG);
+        goalsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        col.add(goalsScroll, BorderLayout.CENTER);
+
+        return col;
+    }
+
+    // ── Info card builders ─────────────────────────────────────────────────────
+
+    private JPanel buildSetGoalCard() {
+        JPanel card = buildCard(UITheme.ACCENT);
         GridBagConstraints gbc = cardGbc();
 
-        JLabel progTitle = new JLabel("\uD83D\uDCC8  Savings Progress");
-        progTitle.setFont(UITheme.HEADER_FONT);
-        progTitle.setForeground(UITheme.TEXT_PRIMARY);
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
-        progressCard.add(progTitle, gbc);
+        JLabel t = new JLabel("\uD83C\uDFAF  Set Savings Goal");
+        t.setFont(UITheme.HEADER_FONT);
+        t.setForeground(UITheme.ACCENT);
+        gbc.gridwidth = 2;
+        card.add(t, gbc);
 
-        gbc.gridy = 1;
+        gbc.gridwidth = 1; gbc.gridy = GridBagConstraints.RELATIVE;
+        gbc.gridx = 0; gbc.weightx = 0;
+        card.add(UITheme.SymbolLabel("Goal Amount (\u20B1):"), gbc);
+
+        gbc.gridx = 1; gbc.weightx = 1.0;
+        goalField = UITheme.textField("1000.00");
+        card.add(goalField, gbc);
+
+        gbc.gridx = 0; gbc.gridwidth = 2;
+        JButton setGoalBtn = UITheme.accentButton("Set Goal");
+        setGoalBtn.addActionListener(e -> applyGoal());
+        card.add(setGoalBtn, gbc);
+
+        return card;
+    }
+
+    private JPanel buildDepositCard() {
+        JPanel card = buildCard(UITheme.SUCCESS);
+        GridBagConstraints gbc = cardGbc();
+
+        JLabel t = new JLabel("\uD83D\uDCB5  Add / Withdraw Savings");
+        t.setFont(UITheme.HEADER_FONT);
+        t.setForeground(UITheme.SUCCESS);
+        gbc.gridwidth = 2;
+        card.add(t, gbc);
+
+        gbc.gridwidth = 1; gbc.gridy = GridBagConstraints.RELATIVE;
+        gbc.gridx = 0; gbc.weightx = 0;
+        card.add(UITheme.SymbolLabel("Amount to Save (\u20B1):"), gbc);
+
+        gbc.gridx = 1; gbc.weightx = 1.0;
+        depositField = UITheme.textField("0.00");
+        card.add(depositField, gbc);
+
+        gbc.gridx = 0; gbc.gridwidth = 2;
+        JButton depositBtn = UITheme.successButton("Add Savings  +XP");
+        depositBtn.addActionListener(e -> deposit());
+        card.add(depositBtn, gbc);
+
+        gbc.gridwidth = 2;
+        JSeparator sep = new JSeparator();
+        sep.setForeground(UITheme.BORDER);
+        card.add(sep, gbc);
+
+        gbc.gridwidth = 1;
+        gbc.gridx = 0; gbc.weightx = 0;
+        card.add(UITheme.SymbolLabel("Amount to Withdraw (\u20B1):"), gbc);
+
+        gbc.gridx = 1; gbc.weightx = 1.0;
+        withdrawField = UITheme.textField("0.00");
+        card.add(withdrawField, gbc);
+
+        gbc.gridx = 0; gbc.gridwidth = 2;
+        JButton withdrawBtn = UITheme.dangerButton("Withdraw  \u22121 XP");
+        withdrawBtn.addActionListener(e -> withdraw());
+        card.add(withdrawBtn, gbc);
+
+        return card;
+    }
+
+    private JPanel buildProgressCard() {
+        JPanel card = buildCard(UITheme.BORDER);
+        GridBagConstraints gbc = cardGbc();
+
+        JLabel t = new JLabel("\uD83D\uDCC8  Savings Progress");
+        t.setFont(UITheme.HEADER_FONT);
+        t.setForeground(UITheme.TEXT_PRIMARY);
+        gbc.gridwidth = 2;
+        card.add(t, gbc);
+
+        gbc.gridy = GridBagConstraints.RELATIVE;
         goalDisplayLabel = new JLabel("Goal: \u20B11,000.00");
         goalDisplayLabel.setFont(UITheme.PESO_FONT);
         goalDisplayLabel.setForeground(UITheme.TEXT_SECONDARY);
-        progressCard.add(goalDisplayLabel, gbc);
+        card.add(goalDisplayLabel, gbc);
 
-        gbc.gridy = 2; gbc.fill = GridBagConstraints.HORIZONTAL;
         savingsBar = new JProgressBar(0, 100);
         savingsBar.setStringPainted(true);
         savingsBar.setFont(UITheme.BODY_FONT);
@@ -201,28 +265,22 @@ public class SavingsPanel extends JPanel {
         savingsBar.setBackground(UITheme.BG);
         savingsBar.setForeground(UITheme.SUCCESS);
         savingsBar.setBorder(new LineBorder(UITheme.BORDER, 1));
-        progressCard.add(savingsBar, gbc);
+        card.add(savingsBar, gbc);
 
-        gbc.gridy = 3;
         motivationLabel = new JLabel(" ");
         motivationLabel.setFont(UITheme.BODY_FONT);
         motivationLabel.setForeground(UITheme.TEXT_SECONDARY);
-        progressCard.add(motivationLabel, gbc);
+        card.add(motivationLabel, gbc);
 
-        gbc.gridy = 4;
         JPanel statsRow = new JPanel(new GridLayout(1, 2, 8, 0));
         statsRow.setBackground(UITheme.CARD);
         savedLabel     = statLabel(UITheme.SUCCESS, "Saved");
         remainingLabel = statLabel(UITheme.WARNING, "Still Needed");
         statsRow.add(savedLabel);
         statsRow.add(remainingLabel);
-        progressCard.add(statsRow, gbc);
+        card.add(statsRow, gbc);
 
-        levelBadge = buildLevelBadge();
-
-        panel.add(progressCard);
-        panel.add(levelBadge);
-        return panel;
+        return card;
     }
 
     private JPanel buildLevelBadge() {
@@ -255,10 +313,10 @@ public class SavingsPanel extends JPanel {
         titleLabel.setForeground(UITheme.WARNING);
         card.add(titleLabel, gbc);
 
-        JSeparator sep = new JSeparator();
-        sep.setForeground(UITheme.BORDER);
-        sep.setPreferredSize(new Dimension(200, 1));
-        card.add(sep, gbc);
+        JSeparator sepLine = new JSeparator();
+        sepLine.setForeground(UITheme.BORDER);
+        sepLine.setPreferredSize(new Dimension(200, 1));
+        card.add(sepLine, gbc);
 
         xpInfoLabel = new JLabel("0 / 100 XP to next level");
         xpInfoLabel.setFont(UITheme.SMALL_FONT);
@@ -274,20 +332,9 @@ public class SavingsPanel extends JPanel {
         return card;
     }
 
-    // ── GOALS: Savings Goals section ───────────────────────────────────────────
+    // ── Add Goal form ──────────────────────────────────────────────────────────
 
-    private JPanel buildGoalsSection() {
-        JPanel section = new JPanel(new BorderLayout(0, 10));
-        section.setBackground(UITheme.BG);
-        section.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
-
-        // Section header
-        JLabel sectionTitle = new JLabel("\uD83C\uDFAF  Savings Goals");
-        sectionTitle.setFont(UITheme.HEADER_FONT);
-        sectionTitle.setForeground(UITheme.TEXT_PRIMARY);
-        section.add(sectionTitle, BorderLayout.NORTH);
-
-        // Add goal form
+    private JPanel buildAddGoalForm() {
         JPanel addForm = new JPanel(new GridBagLayout());
         addForm.setBackground(UITheme.CARD);
         addForm.setBorder(BorderFactory.createCompoundBorder(
@@ -318,66 +365,15 @@ public class SavingsPanel extends JPanel {
         addGoalBtn.addActionListener(e -> addGoal());
         addForm.add(addGoalBtn, gbc);
 
-        // Goals list panel — rebuilt in refresh()
-        goalsListPanel = new JPanel();
-        goalsListPanel.setLayout(new BoxLayout(goalsListPanel, BoxLayout.Y_AXIS));
-        goalsListPanel.setBackground(UITheme.BG);
-
-        JPanel center = new JPanel(new BorderLayout(0, 8));
-        center.setBackground(UITheme.BG);
-        center.add(addForm,        BorderLayout.NORTH);
-        center.add(goalsListPanel, BorderLayout.CENTER);
-
-        section.add(center, BorderLayout.CENTER);
-        return section;
-    }
-
-    // ── BOTTOM: XP bar ─────────────────────────────────────────────────────────
-
-    private JPanel buildXPPanel() {
-        JPanel panel = new JPanel(new BorderLayout(0, 6));
-        panel.setBackground(UITheme.CARD);
-        panel.setBorder(BorderFactory.createCompoundBorder(
-                new LineBorder(UITheme.BORDER, 1, true),
-                new EmptyBorder(14, 14, 14, 14)
-        ));
-        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JLabel xpTitle = new JLabel("\u26A1  Experience Points");
-        xpTitle.setFont(UITheme.HEADER_FONT);
-        xpTitle.setForeground(UITheme.WARNING);
-        panel.add(xpTitle, BorderLayout.NORTH);
-
-        xpBar = new JProgressBar(0, 100);
-        xpBar.setStringPainted(true);
-        xpBar.setFont(UITheme.BODY_FONT.deriveFont(Font.BOLD));
-        xpBar.setBackground(UITheme.BG);
-        xpBar.setForeground(UITheme.WARNING);
-        xpBar.setBorder(new LineBorder(UITheme.BORDER, 1));
-        panel.add(xpBar, BorderLayout.CENTER);
-
-        JLabel hint = new JLabel("  +1 XP per \u20B110 saved  \u2022  Minimum +5 XP per deposit");
-        hint.setFont(UITheme.SYMBOL_SMALL_FONT);
-        hint.setForeground(UITheme.TEXT_SECONDARY);
-        panel.add(hint, BorderLayout.SOUTH);
-
-        return panel;
+        return addForm;
     }
 
     // ── Goal card builder ──────────────────────────────────────────────────────
 
-    /**
-     * Builds a single goal card showing:
-     *   - Goal name + target amount
-     *   - Progress bar (currentSavings / target)
-     *   - Claim button (only when affordable and not yet achieved)
-     *   - Achieved label (when claimed)
-     *   - Remove button (always)
-     */
     private JPanel buildGoalCard(DataStore.SavingsGoal goal, int index) {
-        double saved   = store.getCurrentSavings();
-        double target  = goal.getTargetAmount();
-        int    pct     = target > 0 ? (int) Math.min((saved / target) * 100, 100) : 0;
+        double  saved     = store.getCurrentSavings();
+        double  target    = goal.getTargetAmount();
+        int     pct       = target > 0 ? (int) Math.min((saved / target) * 100, 100) : 0;
         boolean canAfford = saved >= target;
         boolean achieved  = goal.isAchieved();
 
@@ -389,11 +385,9 @@ public class SavingsPanel extends JPanel {
         ));
         card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 110));
 
-        // Left: name + progress bar
         JPanel leftPanel = new JPanel(new BorderLayout(0, 6));
         leftPanel.setBackground(UITheme.CARD);
 
-        // Name + target row
         JPanel nameRow = new JPanel(new BorderLayout());
         nameRow.setBackground(UITheme.CARD);
 
@@ -409,7 +403,6 @@ public class SavingsPanel extends JPanel {
 
         leftPanel.add(nameRow, BorderLayout.NORTH);
 
-        // Progress bar — fully green with achieved label when claimed
         JProgressBar bar = new JProgressBar(0, 100);
         bar.setValue(achieved ? 100 : pct);
         bar.setStringPainted(true);
@@ -425,10 +418,8 @@ public class SavingsPanel extends JPanel {
                     pct, Math.min(saved, target), target));
         }
         leftPanel.add(bar, BorderLayout.CENTER);
-
         card.add(leftPanel, BorderLayout.CENTER);
 
-        // Right: action buttons
         JPanel btnPanel = new JPanel();
         btnPanel.setLayout(new BoxLayout(btnPanel, BoxLayout.Y_AXIS));
         btnPanel.setBackground(UITheme.CARD);
@@ -465,8 +456,8 @@ public class SavingsPanel extends JPanel {
             if (confirm == JOptionPane.YES_OPTION) store.removeSavingsGoal(index);
         });
         btnPanel.add(removeBtn);
-
         card.add(btnPanel, BorderLayout.EAST);
+
         return card;
     }
 
@@ -486,15 +477,12 @@ public class SavingsPanel extends JPanel {
         try {
             double amount = Double.parseDouble(depositField.getText().trim());
             if (amount <= 0) throw new NumberFormatException();
-
             int prevLevel = store.getLevel();
             int xpEarned  = store.calcXPForAmount(amount);
             store.addSavings(amount);
             int newLevel = store.getLevel();
-
             depositField.setText("");
             showXPToast(xpEarned, newLevel > prevLevel, newLevel);
-
         } catch (NumberFormatException ex) {
             UITheme.showError(this, "Enter a valid amount to save.");
         }
@@ -504,47 +492,32 @@ public class SavingsPanel extends JPanel {
         try {
             double amount = Double.parseDouble(withdrawField.getText().trim());
             if (amount <= 0) throw new NumberFormatException();
-
             if (amount > store.getCurrentSavings()) {
                 UITheme.showError(this, String.format(
                         "You only have \u20B1%.2f saved. Can't withdraw more than that.",
-                        store.getCurrentSavings()
-                ));
+                        store.getCurrentSavings()));
                 return;
             }
-
             int confirm = JOptionPane.showConfirmDialog(this,
                     String.format("Withdraw \u20B1%.2f from savings? This will deduct XP.", amount),
                     "Confirm Withdrawal", JOptionPane.YES_NO_OPTION
             );
             if (confirm != JOptionPane.YES_OPTION) return;
-
             int prevLevel = store.getLevel();
             store.withdrawSavings(amount);
             int newLevel = store.getLevel();
-
             withdrawField.setText("");
-
-            // Show toast — warn if level dropped
-            if (newLevel < prevLevel) {
-                showWithdrawToast(true, prevLevel, newLevel);
-            } else {
-                showWithdrawToast(false, prevLevel, newLevel);
-            }
-
+            if (newLevel < prevLevel) showWithdrawToast(true, prevLevel, newLevel);
+            else showWithdrawToast(false, prevLevel, newLevel);
         } catch (NumberFormatException ex) {
             UITheme.showError(this, "Enter a valid amount to withdraw.");
         }
     }
 
     private void addGoal() {
-        String name = goalNameField.getText().trim();
+        String name       = goalNameField.getText().trim();
         String targetText = goalTargetField.getText().trim();
-
-        if (name.isEmpty()) {
-            UITheme.showError(this, "Enter a name for the goal.");
-            return;
-        }
+        if (name.isEmpty()) { UITheme.showError(this, "Enter a name for the goal."); return; }
         try {
             double target = Double.parseDouble(targetText);
             if (target <= 0) throw new NumberFormatException();
@@ -556,7 +529,7 @@ public class SavingsPanel extends JPanel {
         }
     }
 
-    // ── XP toast popup ─────────────────────────────────────────────────────────
+    // ── Toast helpers ──────────────────────────────────────────────────────────
 
     private void showXPToast(int xpEarned, boolean leveledUp, int newLevel) {
         JWindow toast   = new JWindow(SwingUtilities.getWindowAncestor(this));
@@ -566,16 +539,13 @@ public class SavingsPanel extends JPanel {
                 new LineBorder(leveledUp ? UITheme.WARNING : UITheme.ACCENT, 2, true),
                 new EmptyBorder(10, 18, 10, 18)
         ));
-
         String msg = leveledUp
                 ? "\u2B06 LEVEL UP! Now Level " + newLevel + " \u2014 " + store.getCurrentTitle()
                 : "\u26A1 +" + xpEarned + " XP earned!";
-
         JLabel lbl = new JLabel(msg);
         lbl.setFont(UITheme.BODY_FONT.deriveFont(Font.BOLD));
         lbl.setForeground(leveledUp ? UITheme.BG : UITheme.TEXT_PRIMARY);
         content.add(lbl);
-
         showToast(toast, content);
     }
 
@@ -587,31 +557,25 @@ public class SavingsPanel extends JPanel {
                 new LineBorder(leveledDown ? UITheme.DANGER : UITheme.BORDER, 2, true),
                 new EmptyBorder(10, 18, 10, 18)
         ));
-
         String msg = leveledDown
                 ? "\u2B07 LEVEL DOWN! Back to Level " + newLevel + " \u2014 " + store.getCurrentTitle()
                 : "\uD83D\uDCE4 Withdrawal recorded. XP deducted.";
-
         JLabel lbl = new JLabel(msg);
         lbl.setFont(UITheme.BODY_FONT.deriveFont(Font.BOLD));
         lbl.setForeground(UITheme.TEXT_PRIMARY);
         content.add(lbl);
-
         showToast(toast, content);
     }
 
-    /** Shared toast display logic. */
     private void showToast(JWindow toast, JPanel content) {
         toast.add(content);
         toast.pack();
-
         try {
             Point loc = getLocationOnScreen();
             toast.setLocation(loc.x + (getWidth() - toast.getWidth()) / 2, loc.y + 10);
         } catch (Exception ex) {
             toast.setLocationRelativeTo(null);
         }
-
         toast.setVisible(true);
         Timer timer = new Timer(2500, e -> toast.dispose());
         timer.setRepeats(false);
@@ -626,7 +590,6 @@ public class SavingsPanel extends JPanel {
         double needed = Math.max(goal - saved, 0);
         int    pct    = goal > 0 ? (int) Math.min((saved / goal) * 100, 100) : 0;
 
-        // Savings progress card
         goalDisplayLabel.setText(String.format("Goal: \u20B1%.2f", goal));
         goalField.setText(String.format("%.2f", goal));
         savingsBar.setValue(pct);
@@ -649,12 +612,10 @@ public class SavingsPanel extends JPanel {
         savedLabel.setText(String.format(
                 "<html><center><span style='font-family:Arial;font-size:10px;'>Saved</span>"
                         + "<br><b style='font-family:Arial;font-size:15px;'>\u20B1%.2f</b></center></html>", saved));
-
         remainingLabel.setText(String.format(
                 "<html><center><span style='font-family:Arial;font-size:10px;'>Still Needed</span>"
                         + "<br><b style='font-family:Arial;font-size:15px;'>\u20B1%.2f</b></center></html>", needed));
 
-        // XP / level badge
         int level     = store.getLevel();
         int currentXP = store.getCurrentLevelXP();
         int neededXP  = store.getXPForNextLevel();
@@ -666,20 +627,18 @@ public class SavingsPanel extends JPanel {
         xpBar.setString(currentXP + " / " + neededXP + " XP");
         xpInfoLabel.setText(currentXP + " / " + neededXP + " XP  \u2022  Total: " + store.getTotalXP() + " XP");
 
-        // Level-up flash animation
         if (level != lastLevel) {
             lastLevel = level;
             animateLevelUp();
         }
 
-        // Rebuild goals list
         goalsListPanel.removeAll();
         List<DataStore.SavingsGoal> goals = store.getSavingsGoals();
         if (goals.isEmpty()) {
-            JLabel emptyLbl = new JLabel("No savings goals yet. Add one above!");
+            JLabel emptyLbl = new JLabel("  No savings goals yet. Add one above!");
             emptyLbl.setFont(UITheme.SMALL_FONT);
             emptyLbl.setForeground(UITheme.TEXT_SECONDARY);
-            emptyLbl.setBorder(new EmptyBorder(8, 0, 0, 0));
+            emptyLbl.setBorder(new EmptyBorder(12, 8, 0, 0));
             goalsListPanel.add(emptyLbl);
         } else {
             for (int i = 0; i < goals.size(); i++) {

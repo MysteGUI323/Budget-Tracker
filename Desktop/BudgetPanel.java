@@ -1,20 +1,23 @@
 import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
+import java.awt.geom.*;
 
 /**
  * BudgetPanel — Budget tab UI.
  *
- * Layout (top to bottom):
- *   - Budget Settings card: period selector + amount input
- *     + needs % input (Advanced only) + mode toggle buttons
- *   - Shared header: budget label + prorated info line
- *   - CardLayout view switcher:
- *       BASIC   — single progress bar + 4 stat cards
- *       ADVANCED — total progress bar + NEEDS card + WANTS card (each with 4 stat cards)
+ * New layout:
+ *   TOP    — Budget Settings card (period | amount | needs % | Set Budget)
+ *   CENTER — horizontal split:
+ *       LEFT  (fixed 280px wide)
+ *           - Pie chart panel (draws category spending as a donut chart)
+ *           - Basic / Advanced mode toggle buttons below the chart
+ *       RIGHT (fills rest)
+ *           - Shared header labels (budget display + prorated info)
+ *           - CardLayout switcher: BASIC view | ADVANCED view
  *
- * The active mode is stored in DataStore and persisted between sessions.
- * Switching modes shows/hides the needs % input and swaps the CardLayout view.
+ * The pie chart shows all-time category spending slices.
+ * It updates via the same refresh() listener as the stat cards.
  */
 public class BudgetPanel extends JPanel {
 
@@ -30,7 +33,7 @@ public class BudgetPanel extends JPanel {
     private JTextField                        needsPercentField;
     private JComboBox<DataStore.BudgetPeriod> periodBox;
     private JLabel                            periodInfoLabel;
-    private JLabel                            needsPercentLabel; // hidden in basic mode
+    private JLabel                            needsPercentLabel;
     private JButton                           basicBtn;
     private JButton                           advancedBtn;
 
@@ -70,6 +73,9 @@ public class BudgetPanel extends JPanel {
     private JProgressBar advTotalProgressBar;
     private JLabel       advTotalStatusLabel;
 
+    // ── Pie chart panel (custom-drawn) ─────────────────────────────────────────
+    private PieChartPanel pieChart;
+
     // ── Constructor ────────────────────────────────────────────────────────────
 
     public BudgetPanel() {
@@ -95,17 +101,13 @@ public class BudgetPanel extends JPanel {
         gbc.insets = new Insets(6, 8, 6, 8);
         gbc.fill   = GridBagConstraints.HORIZONTAL;
 
-        // Column layout (4 columns: 0=label, 1=input, 2=label, 3=input+button)
-        // weightx: 0 for labels, 1.0 for inputs, 0 for buttons
-
-        // Title row
         JLabel title = new JLabel("\uD83D\uDCB0  Budget Settings");
         title.setFont(UITheme.HEADER_FONT);
         title.setForeground(UITheme.ACCENT);
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 4; gbc.weightx = 0;
         panel.add(title, gbc);
 
-        // Row 1 — period selector | budget amount field + Set Budget button
+        // Row 1 — period | budget amount + set button
         gbc.gridwidth = 1; gbc.gridy = 1;
 
         gbc.gridx = 0; gbc.weightx = 0;
@@ -120,7 +122,6 @@ public class BudgetPanel extends JPanel {
         gbc.gridx = 2; gbc.weightx = 0;
         panel.add(UITheme.SymbolLabel("Budget Amount (\u20B1):"), gbc);
 
-        // Budget field + Set Budget button in a sub-panel so they sit together
         JPanel budgetInputPanel = new JPanel(new BorderLayout(6, 0));
         budgetInputPanel.setBackground(UITheme.CARD);
         budgetField = UITheme.textField("0.00");
@@ -132,7 +133,7 @@ public class BudgetPanel extends JPanel {
         gbc.gridx = 3; gbc.weightx = 1.0;
         panel.add(budgetInputPanel, gbc);
 
-        // Row 2 — needs % (advanced only) | mode toggle buttons
+        // Row 2 — needs % (advanced only)
         gbc.gridy = 2;
 
         gbc.gridx = 0; gbc.weightx = 0;
@@ -142,21 +143,6 @@ public class BudgetPanel extends JPanel {
         gbc.gridx = 1; gbc.weightx = 1.0;
         needsPercentField = UITheme.textField("50");
         panel.add(needsPercentField, gbc);
-
-        // Mode toggle buttons — span columns 2-3, GridLayout forces equal width
-        JPanel btnPanel = new JPanel(new GridLayout(1, 2, 6, 0));
-        btnPanel.setBackground(UITheme.CARD);
-
-        basicBtn = UITheme.accentButton("Basic");
-        basicBtn.addActionListener(e -> switchMode(DataStore.TrackingMode.BASIC));
-        btnPanel.add(basicBtn);
-
-        advancedBtn = UITheme.accentButton("Advanced");
-        advancedBtn.addActionListener(e -> switchMode(DataStore.TrackingMode.ADVANCED));
-        btnPanel.add(advancedBtn);
-
-        gbc.gridx = 2; gbc.weightx = 0; gbc.gridwidth = 2;
-        panel.add(btnPanel, gbc);
 
         // Row 3 — period hint
         gbc.gridy = 3; gbc.gridx = 0; gbc.gridwidth = 4; gbc.weightx = 1.0;
@@ -171,17 +157,55 @@ public class BudgetPanel extends JPanel {
         return panel;
     }
 
-    // ── Main area: shared header + card switcher ───────────────────────────────
+    // ── Main area: LEFT pie chart | RIGHT stats ────────────────────────────────
 
     private JPanel buildMainArea() {
+        JPanel panel = new JPanel(new BorderLayout(12, 0));
+        panel.setBackground(UITheme.BG);
+
+        panel.add(buildChartSide(), BorderLayout.WEST);
+        panel.add(buildStatsSide(), BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    // ── LEFT: Pie chart + mode toggle ─────────────────────────────────────────
+
+    private JPanel buildChartSide() {
+        JPanel side = new JPanel(new BorderLayout(0, 8));
+        side.setBackground(UITheme.BG);
+        side.setPreferredSize(new Dimension(280, 0));
+
+        // Pie chart
+        pieChart = new PieChartPanel();
+        pieChart.setPreferredSize(new Dimension(280, 260));
+        side.add(pieChart, BorderLayout.CENTER);
+
+        // Basic / Advanced toggle buttons — below the chart
+        JPanel toggleRow = new JPanel(new GridLayout(1, 2, 8, 0));
+        toggleRow.setBackground(UITheme.BG);
+
+        basicBtn    = UITheme.accentButton("Basic");
+        advancedBtn = UITheme.accentButton("Advanced");
+        basicBtn.addActionListener(e    -> switchMode(DataStore.TrackingMode.BASIC));
+        advancedBtn.addActionListener(e -> switchMode(DataStore.TrackingMode.ADVANCED));
+        toggleRow.add(basicBtn);
+        toggleRow.add(advancedBtn);
+        side.add(toggleRow, BorderLayout.SOUTH);
+
+        return side;
+    }
+
+    // ── RIGHT: Shared header + CardLayout stats ────────────────────────────────
+
+    private JPanel buildStatsSide() {
         JPanel panel = new JPanel(new BorderLayout(0, 0));
         panel.setBackground(UITheme.BG);
 
-        // Shared header labels
         JPanel headerArea = new JPanel();
         headerArea.setLayout(new BoxLayout(headerArea, BoxLayout.Y_AXIS));
         headerArea.setBackground(UITheme.BG);
-        headerArea.setBorder(new EmptyBorder(16, 0, 12, 0));
+        headerArea.setBorder(new EmptyBorder(8, 0, 12, 0));
 
         budgetDisplayLabel = new JLabel(" ");
         budgetDisplayLabel.setFont(UITheme.PESO_FONT_BOLD);
@@ -199,15 +223,13 @@ public class BudgetPanel extends JPanel {
 
         panel.add(headerArea, BorderLayout.NORTH);
 
-        // CardLayout switcher — fills the remaining center space
         cardLayout = new CardLayout();
         cardPanel  = new JPanel(cardLayout);
         cardPanel.setBackground(UITheme.BG);
-
         cardPanel.add(buildBasicView(),    CARD_BASIC);
         cardPanel.add(buildAdvancedView(), CARD_ADVANCED);
-
         panel.add(cardPanel, BorderLayout.CENTER);
+
         return panel;
     }
 
@@ -217,7 +239,6 @@ public class BudgetPanel extends JPanel {
         JPanel panel = new JPanel(new BorderLayout(0, 16));
         panel.setBackground(UITheme.BG);
 
-        // Progress bar
         JPanel progressPanel = new JPanel(new BorderLayout(0, 4));
         progressPanel.setBackground(UITheme.BG);
 
@@ -236,7 +257,6 @@ public class BudgetPanel extends JPanel {
         basicStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
         progressPanel.add(basicStatusLabel, BorderLayout.SOUTH);
 
-        // 4 stat cards
         JPanel statsRow = new JPanel(new GridLayout(1, 4, 12, 0));
         statsRow.setBackground(UITheme.BG);
 
@@ -265,7 +285,6 @@ public class BudgetPanel extends JPanel {
         JPanel panel = new JPanel(new BorderLayout(0, 12));
         panel.setBackground(UITheme.BG);
 
-        // Total progress bar
         JPanel totalProgressPanel = new JPanel(new BorderLayout(0, 4));
         totalProgressPanel.setBackground(UITheme.BG);
 
@@ -284,13 +303,8 @@ public class BudgetPanel extends JPanel {
         advTotalStatusLabel.setHorizontalAlignment(SwingConstants.CENTER);
         totalProgressPanel.add(advTotalStatusLabel, BorderLayout.SOUTH);
 
-        panel.add(totalProgressPanel);
-        panel.add(Box.createVerticalStrut(12));
-
-        // Needs + wants pool cards side by side
         JPanel splitRow = new JPanel(new GridLayout(1, 2, 12, 0));
         splitRow.setBackground(UITheme.BG);
-
         splitRow.add(buildPoolCard(true));
         splitRow.add(buildPoolCard(false));
 
@@ -299,13 +313,6 @@ public class BudgetPanel extends JPanel {
         return panel;
     }
 
-    /**
-     * Builds a single needs or wants pool card containing:
-     *   - Section label + category hint
-     *   - Progress bar vs prorated ceiling
-     *   - Status label
-     *   - 4 stat cards: Should've Spent | Actually Spent | Today's Buffer | Safe to Spend
-     */
     private JPanel buildPoolCard(boolean isNeeds) {
         JPanel card = new JPanel(new BorderLayout(0, 6));
         card.setBackground(UITheme.CARD);
@@ -314,7 +321,6 @@ public class BudgetPanel extends JPanel {
                 new EmptyBorder(12, 14, 12, 14)
         ));
 
-        // Header area — section label + category hint
         JPanel headerArea = new JPanel(new BorderLayout(0, 2));
         headerArea.setBackground(UITheme.CARD);
 
@@ -325,15 +331,13 @@ public class BudgetPanel extends JPanel {
 
         JLabel hint = new JLabel(isNeeds
                 ? "Food, Transport, School, Health"
-                : "Entertainment, Shopping, Other"
-        );
+                : "Entertainment, Shopping, Other");
         hint.setFont(UITheme.SMALL_FONT);
         hint.setForeground(UITheme.TEXT_SECONDARY);
         headerArea.add(hint, BorderLayout.SOUTH);
 
         card.add(headerArea, BorderLayout.NORTH);
 
-        // Center — progress bar + status label
         JPanel barArea = new JPanel(new BorderLayout(0, 4));
         barArea.setBackground(UITheme.CARD);
         barArea.setBorder(new EmptyBorder(8, 0, 8, 0));
@@ -354,7 +358,6 @@ public class BudgetPanel extends JPanel {
 
         card.add(barArea, BorderLayout.CENTER);
 
-        // Bottom — 4 stat cards filling full width
         JPanel statsRow = new JPanel(new GridLayout(1, 4, 6, 0));
         statsRow.setBackground(UITheme.CARD);
 
@@ -370,21 +373,14 @@ public class BudgetPanel extends JPanel {
 
         card.add(statsRow, BorderLayout.SOUTH);
 
-        // Store references for refresh()
         if (isNeeds) {
-            needsProgressBar   = bar;
-            needsStatusLabel   = statusLbl;
-            needsShouldveLabel = shouldveLbl;
-            needsActuallyLabel = actuallyLbl;
-            needsBufferLabel   = bufferLbl;
-            needsSafeLabel     = safeLbl;
+            needsProgressBar   = bar;       needsStatusLabel   = statusLbl;
+            needsShouldveLabel = shouldveLbl; needsActuallyLabel = actuallyLbl;
+            needsBufferLabel   = bufferLbl; needsSafeLabel     = safeLbl;
         } else {
-            wantsProgressBar   = bar;
-            wantsStatusLabel   = statusLbl;
-            wantsShouldveLabel = shouldveLbl;
-            wantsActuallyLabel = actuallyLbl;
-            wantsBufferLabel   = bufferLbl;
-            wantsSafeLabel     = safeLbl;
+            wantsProgressBar   = bar;       wantsStatusLabel   = statusLbl;
+            wantsShouldveLabel = shouldveLbl; wantsActuallyLabel = actuallyLbl;
+            wantsBufferLabel   = bufferLbl; wantsSafeLabel     = safeLbl;
         }
 
         return card;
@@ -410,7 +406,6 @@ public class BudgetPanel extends JPanel {
         return wrapper;
     }
 
-    /** Builds the two-line HTML used by every stat card label. */
     private String statHtml(String title, String value) {
         return String.format(
                 "<html><center>"
@@ -424,22 +419,15 @@ public class BudgetPanel extends JPanel {
     // ── Mode switch ────────────────────────────────────────────────────────────
 
     private void switchMode(DataStore.TrackingMode mode) {
-        store.setTrackingMode(mode); // persists + triggers refresh()
+        store.setTrackingMode(mode);
     }
 
-    /** Updates button appearance and needs % field visibility to match active mode. */
     private void applyModeUI(DataStore.TrackingMode mode) {
         boolean isAdvanced = mode == DataStore.TrackingMode.ADVANCED;
-
-        // Show/hide needs % input
         needsPercentLabel.setVisible(isAdvanced);
         needsPercentField.setVisible(isAdvanced);
-
-        // Highlight active button
         basicBtn.setBackground(isAdvanced ? UITheme.BORDER : UITheme.ACCENT);
         advancedBtn.setBackground(isAdvanced ? UITheme.ACCENT : UITheme.BORDER);
-
-        // Swap card
         cardLayout.show(cardPanel, isAdvanced ? CARD_ADVANCED : CARD_BASIC);
     }
 
@@ -462,23 +450,18 @@ public class BudgetPanel extends JPanel {
             if (budget <= 0) throw new NumberFormatException();
 
             DataStore.BudgetPeriod selected = (DataStore.BudgetPeriod) periodBox.getSelectedItem();
-            if (selected != store.getBudgetPeriod()) {
-                store.setBudgetPeriod(selected);
-            }
+            if (selected != store.getBudgetPeriod()) store.setBudgetPeriod(selected);
             store.setMonthlyBudget(budget);
 
-            // Only apply needs % in advanced mode
             if (store.getTrackingMode() == DataStore.TrackingMode.ADVANCED) {
                 double needsPct = Double.parseDouble(needsPercentField.getText().trim());
                 if (needsPct < 0 || needsPct > 100) throw new NumberFormatException();
                 store.setNeedsPercent(needsPct);
             }
-
         } catch (NumberFormatException ex) {
             UITheme.showError(this, store.getTrackingMode() == DataStore.TrackingMode.ADVANCED
                     ? "Enter a valid budget amount and needs % (0-100)."
-                    : "Enter a valid budget amount."
-            );
+                    : "Enter a valid budget amount.");
         }
     }
 
@@ -510,15 +493,12 @@ public class BudgetPanel extends JPanel {
         double spent    = store.getTotalExpensesForCurrentPeriod();
         int    elapsed  = period.daysElapsed();
 
-        // Apply mode UI (card swap + button highlight + needs % visibility)
         applyModeUI(mode);
 
-        // Sync form controls
         periodBox.setSelectedItem(period);
         budgetField.setText(String.format("%.2f", budget));
         needsPercentField.setText(String.format("%.0f", store.getNeedsPercent()));
 
-        // Shared header label
         if (mode == DataStore.TrackingMode.ADVANCED) {
             budgetDisplayLabel.setText(String.format(
                     "%s Budget: \u20B1%.2f  (Day %d of %d)  \u2014  Needs: %.0f%%  /  Wants: %.0f%%",
@@ -532,40 +512,37 @@ public class BudgetPanel extends JPanel {
             ));
         }
 
-        // Shared prorated info line
         double dailyRate = period.days > 0 ? budget / period.days : 0;
         proratedInfoLabel.setText(String.format(
                 "Daily rate: \u20B1%.2f  \u2022  Prorated budget for today: \u20B1%.2f",
                 dailyRate, prorated
         ));
 
-        // ── Basic view ─────────────────────────────────────────────────────────
+        // Basic
         int basicPct = prorated > 0 ? (int) Math.min((spent / prorated) * 100, 100) : 0;
         basicProgressBar.setValue(basicPct);
         basicProgressBar.setString(basicPct + "% of prorated budget used");
         updateBarColor(basicProgressBar, basicStatusLabel, basicPct, period.displayName.toLowerCase());
-
         basicShouldveLabel.setText(statHtml("Should've Spent", String.format("\u20B1%.2f", prorated)));
         basicActuallyLabel.setText(statHtml("Actually Spent",  String.format("\u20B1%.2f", spent)));
         basicBufferLabel.setText(statHtml("Today's Buffer",    String.format("\u20B1%.2f", Math.max(store.getRemainingProrated(), 0))));
         basicSafeLabel.setText(statHtml("Safe to Spend",       String.format("\u20B1%.2f", store.getDailyAllowance())));
 
-        // ── Advanced view ──────────────────────────────────────────────────────
+        // Advanced total
         int advTotalPct = prorated > 0 ? (int) Math.min((spent / prorated) * 100, 100) : 0;
         advTotalProgressBar.setValue(advTotalPct);
         advTotalProgressBar.setString(advTotalPct + "% of total prorated budget used");
-        updateBarColor(advTotalProgressBar, advTotalStatusLabel, advTotalPct, "total " + period.displayName.toLowerCase());
+        updateBarColor(advTotalProgressBar, advTotalStatusLabel, advTotalPct,
+                "total " + period.displayName.toLowerCase());
 
         // Needs
         double needsProrated = store.getNeedsProratedBudget();
         double needsSpent    = store.getNeedsSpentThisPeriod();
         double needsRemain   = store.getNeedsRemainingProrated();
         int    needsPct      = needsProrated > 0 ? (int) Math.min((needsSpent / needsProrated) * 100, 100) : 0;
-
         needsProgressBar.setValue(needsPct);
         needsProgressBar.setString(needsPct + "% of needs prorated budget used");
         updateBarColor(needsProgressBar, needsStatusLabel, needsPct, "needs");
-
         needsShouldveLabel.setText(statHtml("Should've Spent", String.format("\u20B1%.2f", needsProrated)));
         needsActuallyLabel.setText(statHtml("Actually Spent",  String.format("\u20B1%.2f", needsSpent)));
         needsBufferLabel.setText(statHtml("Today's Buffer",    String.format("\u20B1%.2f", Math.max(needsRemain, 0))));
@@ -576,16 +553,162 @@ public class BudgetPanel extends JPanel {
         double wantsSpent    = store.getWantsSpentThisPeriod();
         double wantsRemain   = store.getWantsRemainingProrated();
         int    wantsPct      = wantsProrated > 0 ? (int) Math.min((wantsSpent / wantsProrated) * 100, 100) : 0;
-
         wantsProgressBar.setValue(wantsPct);
         wantsProgressBar.setString(wantsPct + "% of wants prorated budget used");
         updateBarColor(wantsProgressBar, wantsStatusLabel, wantsPct, "wants");
-
         wantsShouldveLabel.setText(statHtml("Should've Spent", String.format("\u20B1%.2f", wantsProrated)));
         wantsActuallyLabel.setText(statHtml("Actually Spent",  String.format("\u20B1%.2f", wantsSpent)));
         wantsBufferLabel.setText(statHtml("Today's Buffer",    String.format("\u20B1%.2f", Math.max(wantsRemain, 0))));
         wantsSafeLabel.setText(statHtml("Safe to Spend",       String.format("\u20B1%.2f", store.getWantsDailyAllowance())));
 
         updatePeriodHint();
+
+        // Update pie chart with category totals
+        if (pieChart != null) {
+            double[] values = new double[Expense.CATEGORIES.length];
+            for (int i = 0; i < Expense.CATEGORIES.length; i++) {
+                values[i] = store.getTotalByCategory(Expense.CATEGORIES[i]);
+            }
+            pieChart.setData(Expense.CATEGORIES, values);
+        }
+    }
+
+    // ── Pie Chart Panel ────────────────────────────────────────────────────────
+
+    /**
+     * Custom-painted donut chart.
+     * Shows spending per category as proportional arc slices.
+     * Renders a legend below the donut.
+     * Shows "No expenses yet" when all values are zero.
+     */
+    private static class PieChartPanel extends JPanel {
+
+        private String[] labels = new String[0];
+        private double[] values = new double[0];
+
+        // Fixed palette aligned to HistoryPanel category colors
+        private static final Color[] SLICE_COLORS = {
+                new Color(255, 149,   0),  // Food
+                new Color(  0, 122, 255),  // Transport
+                new Color( 52, 199,  89),  // School
+                new Color(175,  82, 222),  // Entertainment
+                new Color(255,  59,  48),  // Health
+                new Color(255, 204,   0),  // Shopping
+                new Color(130, 130, 152),  // Other
+        };
+
+        public PieChartPanel() {
+            setOpaque(false);
+            setBackground(UITheme.BG);
+        }
+
+        public void setData(String[] labels, double[] values) {
+            this.labels = labels;
+            this.values = values;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+
+            // Background card
+            g2.setColor(UITheme.CARD);
+            g2.fillRoundRect(0, 0, w, h, 12, 12);
+            g2.setColor(UITheme.BORDER);
+            g2.drawRoundRect(0, 0, w - 1, h - 1, 12, 12);
+
+            // Title
+            g2.setFont(UITheme.HEADER_FONT);
+            g2.setColor(UITheme.TEXT_PRIMARY);
+            String chartTitle = "Spending Breakdown";
+            FontMetrics titleFm = g2.getFontMetrics();
+            g2.drawString(chartTitle, (w - titleFm.stringWidth(chartTitle)) / 2, 22);
+
+            double total = 0;
+            for (double v : values) total += v;
+
+            // Legend row height: ~14px per entry, 2 columns, reserve space at bottom
+            int legendRows   = (int) Math.ceil(labels.length / 2.0);
+            int legendHeight = legendRows * 16 + 8;
+            int chartAreaH   = h - 30 - legendHeight - 10;
+
+            int diameter  = Math.min(w - 32, chartAreaH);
+            if (diameter < 20) { g2.dispose(); return; }
+
+            int arcX = (w - diameter) / 2;
+            int arcY = 30;
+            int hole  = (int)(diameter * 0.42); // donut hole size
+
+            if (total <= 0) {
+                // Empty state — draw a gray ring
+                g2.setColor(UITheme.BORDER);
+                g2.setStroke(new BasicStroke(diameter * 0.3f));
+                int cx = arcX + diameter / 2;
+                int cy = arcY + diameter / 2;
+                g2.drawOval(arcX + (int)(diameter * 0.15), arcY + (int)(diameter * 0.15),
+                        (int)(diameter * 0.7), (int)(diameter * 0.7));
+                g2.setFont(UITheme.SMALL_FONT);
+                g2.setColor(UITheme.TEXT_SECONDARY);
+                String msg = "No expenses yet";
+                FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(msg, cx - fm.stringWidth(msg) / 2, cy + fm.getAscent() / 2);
+                g2.dispose();
+                return;
+            }
+
+            // Draw slices
+            double startAngle = -90.0;
+            for (int i = 0; i < values.length; i++) {
+                if (values[i] <= 0) continue;
+                double sweep = (values[i] / total) * 360.0;
+                g2.setColor(SLICE_COLORS[i % SLICE_COLORS.length]);
+                g2.fill(new Arc2D.Double(arcX, arcY, diameter, diameter,
+                        startAngle, sweep, Arc2D.PIE));
+                startAngle += sweep;
+            }
+
+            // Donut hole
+            g2.setColor(UITheme.CARD);
+            int holeX = arcX + (diameter - hole) / 2;
+            int holeY = arcY + (diameter - hole) / 2;
+            g2.fillOval(holeX, holeY, hole, hole);
+
+            // Center text — total amount
+            g2.setFont(new Font("Arial", Font.BOLD, 13));
+            g2.setColor(UITheme.TEXT_PRIMARY);
+            String totalStr = String.format("\u20B1%.0f", total);
+            FontMetrics fm = g2.getFontMetrics();
+            int cx = arcX + diameter / 2;
+            int cy = arcY + diameter / 2;
+            g2.drawString(totalStr, cx - fm.stringWidth(totalStr) / 2, cy + fm.getAscent() / 2);
+
+            // Legend — 2 column grid below the chart
+            int legendY  = arcY + diameter + 14;
+            int colWidth = w / 2;
+            g2.setFont(UITheme.SMALL_FONT);
+            FontMetrics lfm = g2.getFontMetrics();
+
+            int col = 0, row = 0;
+            for (int i = 0; i < labels.length; i++) {
+                if (values[i] <= 0) { col++; if (col >= 2) { col = 0; row++; } continue; }
+                int lx = col * colWidth + 10;
+                int ly = legendY + row * 16;
+                g2.setColor(SLICE_COLORS[i % SLICE_COLORS.length]);
+                g2.fillRoundRect(lx, ly - 8, 10, 10, 3, 3);
+                g2.setColor(UITheme.TEXT_SECONDARY);
+                String entry = labels[i] + " " + (int)((values[i] / total) * 100) + "%";
+                g2.drawString(entry, lx + 13, ly);
+                col++;
+                if (col >= 2) { col = 0; row++; }
+            }
+
+            g2.dispose();
+        }
     }
 }

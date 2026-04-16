@@ -123,7 +123,7 @@ public class UITheme {
                 SUCCESS        = new Color( 85, 180, 140);
                 DANGER         = new Color(200,  95,  95);
                 WARNING        = new Color(205, 165,  75);
-                TEXT_PRIMARY   = new Color(215, 215, 228);
+                TEXT_PRIMARY   = new Color(255, 255, 255);
                 TEXT_SECONDARY = new Color(130, 130, 152);
                 BORDER         = new Color( 58,  58,  78);
                 break;

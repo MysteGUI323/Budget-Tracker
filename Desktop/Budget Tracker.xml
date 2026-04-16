@@ -2,7 +2,7 @@
 <launch4jConfig>
   <dontWrapJar>false</dontWrapJar>
   <headerType>gui</headerType>
-  <jar>E:\Program Files\Budgeting tool.jar</jar>
+  <jar>C:\Users\myste\IdeaProjects\Budgeting tool\out\artifacts\Budgeting_tool_jar\Budgeting tool.jar</jar>
   <outfile>C:\Users\myste\Downloads\Budget Tracker.exe</outfile>
   <errTitle></errTitle>
   <cmdLine></cmdLine>
