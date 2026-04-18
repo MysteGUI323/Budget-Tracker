@@ -105,6 +105,7 @@ Five built-in color themes, applied instantly and saved between sessions:
 
 ## 🖼️ Screenshots
 <img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/58c43fe4-3a3f-462f-a317-ea797f008a68" />
+<img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/cebc168d-fcca-4c24-8316-95d7f83783b3" />
 <img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/47f11360-412f-429b-948f-1357d06342b7" />
 <img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/d2930ea6-614f-40e7-a0cf-03ab76dbace2" />
 <img width="1920" height="1020" alt="image" src="https://github.com/user-attachments/assets/7903242d-c550-49c5-95c0-5aaf620a8fde" />
