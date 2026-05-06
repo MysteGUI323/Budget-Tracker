@@ -5,7 +5,6 @@ import java.awt.geom.*;
 
 /**
  * BudgetPanel — Budget tab UI.
- *
  * New layout:
  *   TOP    — Budget Settings card (period | amount | needs % | Set Budget)
  *   CENTER — horizontal split:
@@ -15,9 +14,14 @@ import java.awt.geom.*;
  *       RIGHT (fills rest)
  *           - Shared header labels (budget display + prorated info)
  *           - CardLayout switcher: BASIC view | ADVANCED view
- *
  * The pie chart shows all-time category spending slices.
  * It updates via the same refresh() listener as the stat cards.
+ *
+ * <p>Project: Student Budget Tracker v3.0</p>
+ * <p>Developed as an academic project</p>
+ *
+ * @author  John Erwin
+ * @role    Budget tab UI, donut chart, Basic/Advanced mode, stat cards
  */
 public class BudgetPanel extends JPanel {
 
@@ -449,13 +453,19 @@ public class BudgetPanel extends JPanel {
             double budget = Double.parseDouble(budgetField.getText().trim());
             if (budget <= 0) throw new NumberFormatException();
 
+            // Capture needs % NOW — before any store call fires notifyListeners()
+            // and refresh() overwrites the field with the old stored value.
+            double needsPct = 50.0; // default, only used in Advanced mode
+            if (store.getTrackingMode() == DataStore.TrackingMode.ADVANCED) {
+                needsPct = Double.parseDouble(needsPercentField.getText().trim());
+                if (needsPct < 0 || needsPct > 100) throw new NumberFormatException();
+            }
+
             DataStore.BudgetPeriod selected = (DataStore.BudgetPeriod) periodBox.getSelectedItem();
             if (selected != store.getBudgetPeriod()) store.setBudgetPeriod(selected);
             store.setMonthlyBudget(budget);
 
             if (store.getTrackingMode() == DataStore.TrackingMode.ADVANCED) {
-                double needsPct = Double.parseDouble(needsPercentField.getText().trim());
-                if (needsPct < 0 || needsPct > 100) throw new NumberFormatException();
                 store.setNeedsPercent(needsPct);
             }
         } catch (NumberFormatException ex) {
