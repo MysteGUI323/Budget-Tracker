@@ -150,20 +150,6 @@ public class DataStore {
     private int totalXP = 0;
     private int level   = 1;
 
-    // ── Needs / wants category mapping ────────────────────────────────────────
-
-    public static boolean isNeedsCategory(String category) {
-        switch (category) {
-            case "Food":
-            case "Transport":
-            case "School":
-            case "Health":
-                return true;
-            default:
-                return false;
-        }
-    }
-
     // ── Listener system ────────────────────────────────────────────────────────
 
     public void addListener(Runnable listener) { listeners.add(listener); }
@@ -309,7 +295,7 @@ public class DataStore {
     public double getNeedsSpentThisPeriod() {
         LocalDate periodStart = getPeriodStart();
         return expenses.stream()
-                .filter(e -> !e.getDate().isBefore(periodStart) && isNeedsCategory(e.getCategory()))
+                .filter(e -> !e.getDate().isBefore(periodStart) && "Need".equals(e.getNeedWant()))
                 .mapToDouble(Expense::getAmount)
                 .sum();
     }
@@ -317,7 +303,7 @@ public class DataStore {
     public double getWantsSpentThisPeriod() {
         LocalDate periodStart = getPeriodStart();
         return expenses.stream()
-                .filter(e -> !e.getDate().isBefore(periodStart) && !isNeedsCategory(e.getCategory()))
+                .filter(e -> !e.getDate().isBefore(periodStart) && "Want".equals(e.getNeedWant()))
                 .mapToDouble(Expense::getAmount)
                 .sum();
     }

@@ -102,7 +102,7 @@ public class SplashScreen extends JWindow {
         content.add(center, BorderLayout.CENTER);
 
         // ── Version tag (bottom-right) ─────────────────────────────────────────
-        JLabel version = new JLabel("v1.0");
+        JLabel version = new JLabel("v3.0");
         version.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 10));
         version.setForeground(UITheme.BORDER);
         version.setHorizontalAlignment(SwingConstants.RIGHT);
